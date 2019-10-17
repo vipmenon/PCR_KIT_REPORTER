@@ -1,0 +1,303 @@
+---
+title: "Multiple Pages"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+```{r}
+library(readxl)
+library(tibble)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(DT)
+library(stringr)
+
+# Modify following variable if changed
+# TARGET_REF = 'REF'
+# POS_CTRL = 'p'
+# NEG_CTRL = 'n'
+Sample = 1
+`NA` = 1
+
+CT_CUTOFF = list(`L858R`=c(12,14), `19del`=c(8,11), `T790M`=c(10,12),
+                 `G719X`=c(12,15), `Ins20`=c(11,14), `L861Q`=c(12,15),
+                 `S768I`=c(12,15))
+```
+
+EGFR (hongwei)
+=====================================  
+
+Column {.sidebar data-width=200}
+-----------------------------------------------------------------------
+
+分析宏微特斯 - EGFR基因突变检测试剂盒 QuantStudioDx PCR实验结果Excel数据
+
+```{r}
+textInput("TARGET_REF", label = "外控Target Name", value = "REF")
+
+textInput("POS_CTRL", label = "阳性质控Sample Name", value = "p")
+
+textInput("NEG_CTRL", label = "阴性质控Sample Name", value = "n")
+
+textInput("REPORTER", label = "检测Reporter", value = "FAM")
+
+fileInput("qdx_xlsx", label = "选择荧光PCR导出Excel文件",
+          buttonLabel = "..",
+          placeholder = ".xlsx file", accept = c(".xls", ".xlsx"))
+
+# 分别读取QDx导出文件中过的三个表
+
+tbl_info <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble()
+  } else {
+    read_excel(input$qdx_xlsx$datapath, sheet = "Results", range = "A1:B32", col_names = c("参数","值"))
+  }
+})
+
+tbl_res <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble(`Well` = integer(), `Well Position` = character(),
+           Omit = character(), `Sample Name`=character(),
+           `Target Name` = character(),	Task = character(),
+           Reporter = character(),	Quencher = character(),	CT = numeric())
+  } else {
+    read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 34)
+  }
+})
+
+tbl_amp <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble(Well = integer(), `Delta Rn` = numeric(), `Cycle` = integer())
+  } else {
+    read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 34,
+               col_types = c("numeric", "text", "text", "skip", "numeric"))
+  }
+})
+
+drn_ylim <- reactive({
+  if (nrow(tbl_amp()) == 0) {
+    1
+  } else {
+    max(tbl_amp()$`Delta Rn`, na.rm = T) + 0.1
+  }
+})
+
+tbl_amp_smp <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble(Cycle = integer(), `Delta Rn` = numeric(), `Sample Name` = integer())
+  } else {
+    tbl_amp() %>% left_join(tbl_res() %>% select(`Well`, `Sample Name`))
+  }
+})
+
+tbl_amp_pn <- reactive({
+  if (nrow(tbl_amp_smp()) == 0) {
+    tibble(Cycle = integer(), Sample = character(), `Target Name` = character(),
+           `p` = numeric(), `n` = numeric())
+  } else {
+    tbl_amp_smp() %>%
+      filter(!is.na(`Sample Name`)) %>%
+      mutate(Cycle = as.integer(Cycle)) %>%
+      # arrange("Cycle", 'Target Name') %>%
+      # select(-1) %>%
+      spread(`Sample Name`, `Delta Rn`)
+  }
+})
+
+# 选出检测到CT值的结果作图
+
+st_choices <- reactive({
+  if (nrow(tbl_res()) == 0) {
+    "Sample | Target"
+  } else {
+    tbl_res() %>%
+      filter(`Target Name` != input$TARGET_REF, !is.na(`CT`), !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)) %>%
+      select(`Sample Name`, `Target Name`) %>%
+      apply(MARGIN = 1, paste, collapse = " | ")
+  }
+})
+
+renderUI(selectInput(inputId = "sample_target", 
+            label = "阳性/疑似阳性样本",
+            choices = st_choices())
+)
+
+```
+    
+Column {data-width=400}
+-------------------------------------
+    
+### PCR Results
+    
+```{r}
+renderDataTable(tbl_res() %>% select(c(2,4,5,7,9)) %>%
+                          filter(`Reporter` == input$REPORTER) %>%
+                          mutate(`Sample Name` = as.factor(`Sample Name`),
+                                 `Target Name` = as.factor(`Target Name`)) %>%
+                          datatable(filter = 'top', fillContainer = TRUE,
+                                    options = list(pageLength = -1, autoWidth = TRUE,
+                                                   sDom  = '<"top">t<"bottom">')) %>%
+                          formatRound(columns=c('CT'), digits=3) %>%
+                          formatStyle('CT', target = 'row', color = styleEqual(NA, 'gray'),
+                                      fontWeight = styleInterval(c(0,38), c('normal', 'bold', 'normal'))) %>%
+                          formatStyle('Target Name', target = 'row',
+                                       backgroundColor = styleEqual(input$TARGET_REF, 'lightgreen')) )
+```
+
+### 阳性/疑似结果扩增曲线
+
+```{r}
+p_sample <- reactive({input$sample_target %>% str_split_fixed(" \\| ", 2) %>% first()})
+p_target <- reactive({input$sample_target %>% str_split_fixed(" \\| ", 2) %>% last()})
+
+ann_row <- reactive({
+  tbl_res() %>% filter(`Sample Name` == p_sample(), !is.na(`CT`))
+})
+
+delta_Ct <- reactive(ann_row()$CT[ann_row()$`Target Name` == p_target()] -
+                       ann_row()$CT[ann_row()$`Target Name` == input$TARGET_REF])
+
+conclusion <- reactive(
+  if (nrow(ann_row()) == 0) {
+    ""
+  } else if (ann_row()$CT[ann_row()$`Target Name` == p_target()] > 38) {
+    paste(p_target(), "突变阴性", sep = "")
+  } else if (delta_Ct() <= CT_CUTOFF[[p_target()]][1]) {
+    paste(p_target(), "突变阳性", sep = "")
+  } else if (delta_Ct() > CT_CUTOFF[[p_target()]][2]) {
+    paste(p_target(), "突变阴性", sep = "")
+  } else {
+    paste(p_target(), "突变弱阳性", sep = "")
+  }
+)
+
+ann_lst <- reactive({
+  list(
+    x = c(ann_row()$CT, ann_row()$CT %>% mean),
+    y = c(seq(drn_ylim()*0.2, drn_ylim()*0.12,length.out = ann_row() %>% nrow()), 1),
+    text = c(paste(ann_row()$`Target Name`, ann_row()$CT %>% round(digits = 2), sep = ": "),
+             conclusion()),
+    xref = "x",
+    yref = "y",
+    align = 'right',
+    showarrow = FALSE
+  )
+})
+
+renderPlotly(
+  plot_ly(tbl_amp_pn(),
+          y = ~get(p_sample()), x= ~`Cycle`, type = "scatter",
+          name = ~`Target Name`,
+          text = ~`Target Name`,
+          mode = "lines+markers",
+          hovertemplate = paste(
+          "<b>Target: %{text}</b><br><br>",
+          "%{yaxis.title.text}: %{y:.3f}<br>",
+          "%{xaxis.title.text}: %{x:d}<br>",
+          "<extra></extra>") ) %>%
+    layout(yaxis = list(range = c(-0.1, drn_ylim()), title = 'ΔRn'),
+         legend = list(x = 0.1, y = 0.9),
+         annotations = ann_lst())
+)
+```
+
+Column {data-width=400}
+-------------------------------------
+   
+### PCR实验参数
+
+```{r}
+renderTable(tbl_info() %>% filter(!grepl("Calibration",`参数`)))
+```   
+ 
+### 阴性/阳性质控扩增图
+    
+```{r}
+
+neg_ctrl_text <- reactive(
+  if (tbl_res()$CT[tbl_res()$`Sample Name` == input$NEG_CTRL] %>% is.na() %>% all()) {
+    "空白对照品结果正常"
+  } else {
+    "空白对照品结果异常"
+  }
+)
+
+pos_ctrl_text <- reactive(
+  if (tbl_res()$CT[tbl_res()$`Sample Name` == input$POS_CTRL] %>% is.na() %>% any()) {
+    "阳性对照品结果异常"
+  } else {
+    if ((tbl_res()$CT[tbl_res()$`Sample Name` == input$POS_CTRL] <= 30) %>% all()) {
+      "阳性对照品结果正常"
+    } else {
+      "阳性对照品结果异常"
+    }
+  }
+)
+
+ctrl_color <- reactive(
+  if (grepl("异",pos_ctrl_text()) | grepl("异",neg_ctrl_text())) {
+    "red"
+  } else {
+    "green"
+  }
+)
+
+ctrl_ann_lst <- reactive({
+  list(
+    x = 10,
+    y = c(0.27,0.17),
+    text = c(neg_ctrl_text()[1], pos_ctrl_text()[1]),
+    font = list(color = ctrl_color()),
+    xref = "x",
+    yref = "y",
+    align = 'left',
+    showarrow = FALSE
+  )
+})
+
+renderPlotly(
+  plot_ly(tbl_amp_pn(),
+        y = ~get(input$POS_CTRL), x= ~`Cycle`, type = "scatter",
+        name = '阳性质控',
+        text = ~`Target Name`,
+        mode = "lines+markers",
+        hovertemplate = paste(
+          "<b>Target: %{text}</b><br><br>",
+          "%{yaxis.title.text}: %{y:.3f}<br>",
+          "%{xaxis.title.text}: %{x:d}<br>",
+          "<extra></extra>"
+          )) %>%
+  add_trace(y = ~get(input$NEG_CTRL), name = '阴性质控',
+            text = '阴性质控') %>%
+  layout(yaxis = list(range = c(-0.1, drn_ylim()), title = 'ΔRn'),
+         legend = list(x = 0.1, y = 0.9),
+         annotations = ctrl_ann_lst())
+)
+
+```
+
+To Be Continued {data-orientation=rows}
+=====================================     
+   
+Row {data-height=600}
+-------------------------------------
+
+### Chart 1
+
+```{r}
+```
+
+Row {data-height=400}
+-------------------------------------
+   
+### Chart 2
+
+```{r}
+```   
+    
+### Chart 3
+
+```{r}
+```
