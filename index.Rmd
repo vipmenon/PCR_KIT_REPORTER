@@ -20,21 +20,38 @@ library(stringr)
 Sample = 1
 `NA` = 1
 
-CT_CUTOFF = list(`L858R`=c(12,14), `19del`=c(8,11), `T790M`=c(10,12),
-                 `G719X`=c(12,15), `Ins20`=c(11,14), `L861Q`=c(12,15),
-                 `S768I`=c(12,15))
+CT_CUTOFF = list(HW = list(`L858R`=c(12,14), `19del`=c(8,11),
+                                `T790M`=c(10,12), `L861Q`=c(12,15),
+                                `G719X`=c(12,15), `Ins20`=c(11,14),
+                                `S768I`=c(12,15), TAR_UP = 38,
+                                CTRL_UP = 30),
+                 YZY = list(`L858R`=c(7,7), `19DEL`=c(6,6),
+                                `T790M`=c(7,7), `L861Q`=c(7,7),
+                                `G719X`=c(7,7), `INS20`=c(6,6),
+                                `S768I`=c(7,7), TAR_UP = 36,
+                                CTRL_UP = 30) )
+
 ```
 
-EGFR (hongwei)
+EGFR基因突变检测
 =====================================  
 
 Column {.sidebar data-width=200}
 -----------------------------------------------------------------------
 
-分析宏微特斯 - EGFR基因突变检测试剂盒 QuantStudioDx PCR实验结果Excel数据
+**EGFR基因突变检测试剂盒 QuantStudioDx PCR实验结果Excel数据数据分析**
+
+最后更新日期：`r file.mtime("index.Rmd")`
 
 ```{r}
+selectInput(inputId = "KIT_BRAND", 
+            label = "检测试剂盒厂家",
+            choices = list("宏微特斯" = "HW",
+                           "友芝友" = "YZY"))
+
 textInput("TARGET_REF", label = "外控Target Name", value = "REF")
+
+textInput("INT_CTRL", label = "内控Target Name", value = "VIC")
 
 textInput("POS_CTRL", label = "阳性质控Sample Name", value = "p")
 
@@ -67,6 +84,10 @@ tbl_res <- reactive({
   }
 })
 
+tbl_res_target <- reactive({
+  tbl_res() %>% filter(`Reporter` == input$REPORTER)
+})
+
 tbl_amp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Well = integer(), `Delta Rn` = numeric(), `Cycle` = integer())
@@ -88,7 +109,7 @@ tbl_amp_smp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Cycle = integer(), `Delta Rn` = numeric(), `Sample Name` = integer())
   } else {
-    tbl_amp() %>% left_join(tbl_res() %>% select(`Well`, `Sample Name`))
+    tbl_amp() %>% left_join(tbl_res_target() %>% select(`Well`, `Sample Name`))
   }
 })
 
@@ -98,22 +119,23 @@ tbl_amp_pn <- reactive({
            `p` = numeric(), `n` = numeric())
   } else {
     tbl_amp_smp() %>%
-      filter(!is.na(`Sample Name`)) %>%
+      filter(!is.na(`Sample Name`), `Target Name` != input$INT_CTRL) %>%
       mutate(Cycle = as.integer(Cycle)) %>%
-      # arrange("Cycle", 'Target Name') %>%
-      # select(-1) %>%
+      rowid_to_column() %>%
       spread(`Sample Name`, `Delta Rn`)
+      # select(-1) %>%
   }
 })
 
 # 选出检测到CT值的结果作图
 
 st_choices <- reactive({
-  if (nrow(tbl_res()) == 0) {
+  if (nrow(tbl_res_target()) == 0) {
     "Sample | Target"
   } else {
-    tbl_res() %>%
-      filter(`Target Name` != input$TARGET_REF, !is.na(`CT`), !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)) %>%
+    tbl_res_target() %>%
+      filter(`Target Name` != input$TARGET_REF, !is.na(`CT`),
+             !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)) %>%
       select(`Sample Name`, `Target Name`) %>%
       apply(MARGIN = 1, paste, collapse = " | ")
   }
@@ -153,7 +175,8 @@ p_sample <- reactive({input$sample_target %>% str_split_fixed(" \\| ", 2) %>% fi
 p_target <- reactive({input$sample_target %>% str_split_fixed(" \\| ", 2) %>% last()})
 
 ann_row <- reactive({
-  tbl_res() %>% filter(`Sample Name` == p_sample(), !is.na(`CT`))
+  tbl_res_target() %>% filter(`Sample Name` == p_sample(), !is.na(`CT`)) %>%
+    arrange(`CT`)
 })
 
 delta_Ct <- reactive(ann_row()$CT[ann_row()$`Target Name` == p_target()] -
@@ -162,11 +185,11 @@ delta_Ct <- reactive(ann_row()$CT[ann_row()$`Target Name` == p_target()] -
 conclusion <- reactive(
   if (nrow(ann_row()) == 0) {
     ""
-  } else if (ann_row()$CT[ann_row()$`Target Name` == p_target()] > 38) {
+  } else if (ann_row()$CT[ann_row()$`Target Name` == p_target()] > CT_CUTOFF[[input$KIT_BRAND]][["TAR_UP"]]) {
     paste(p_target(), "突变阴性", sep = "")
-  } else if (delta_Ct() <= CT_CUTOFF[[p_target()]][1]) {
+  } else if (delta_Ct() <= CT_CUTOFF[[input$KIT_BRAND]][[p_target()]][1]) {
     paste(p_target(), "突变阳性", sep = "")
-  } else if (delta_Ct() > CT_CUTOFF[[p_target()]][2]) {
+  } else if (delta_Ct() > CT_CUTOFF[[input$KIT_BRAND]][[p_target()]][2]) {
     paste(p_target(), "突变阴性", sep = "")
   } else {
     paste(p_target(), "突变弱阳性", sep = "")
@@ -175,8 +198,8 @@ conclusion <- reactive(
 
 ann_lst <- reactive({
   list(
-    x = c(ann_row()$CT, ann_row()$CT %>% mean),
-    y = c(seq(drn_ylim()*0.2, drn_ylim()*0.12,length.out = ann_row() %>% nrow()), 1),
+    x = c(ann_row()$CT, 20),
+    y = c(seq(drn_ylim()*0.27, drn_ylim()*0.12,length.out = ann_row() %>% nrow()), drn_ylim()*0.85),
     text = c(paste(ann_row()$`Target Name`, ann_row()$CT %>% round(digits = 2), sep = ": "),
              conclusion()),
     xref = "x",
@@ -217,7 +240,7 @@ renderTable(tbl_info() %>% filter(!grepl("Calibration",`参数`)))
 ```{r}
 
 neg_ctrl_text <- reactive(
-  if (tbl_res()$CT[tbl_res()$`Sample Name` == input$NEG_CTRL] %>% is.na() %>% all()) {
+  if (tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$NEG_CTRL] %>% is.na() %>% all()) {
     "空白对照品结果正常"
   } else {
     "空白对照品结果异常"
@@ -225,10 +248,10 @@ neg_ctrl_text <- reactive(
 )
 
 pos_ctrl_text <- reactive(
-  if (tbl_res()$CT[tbl_res()$`Sample Name` == input$POS_CTRL] %>% is.na() %>% any()) {
+  if (tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$POS_CTRL] %>% is.na() %>% any()) {
     "阳性对照品结果异常"
   } else {
-    if ((tbl_res()$CT[tbl_res()$`Sample Name` == input$POS_CTRL] <= 30) %>% all()) {
+    if ((tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$POS_CTRL] <= CT_CUTOFF[[input$KIT_BRAND]][["CTRL_UP"]]) %>% all()) {
       "阳性对照品结果正常"
     } else {
       "阳性对照品结果异常"
