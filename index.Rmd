@@ -1,5 +1,5 @@
 ---
-title: "Multiple Pages"
+title: "贝格尔医学检验"
 output: flexdashboard::flex_dashboard
 runtime: shiny
 ---
@@ -20,9 +20,9 @@ library(stringr)
 Sample = 1
 `NA` = 1
 
-CT_CUTOFF = list(HW_EGFR = list(`L858R`=c(12,14), `19del`=c(8,11),
+CT_CUTOFF = list(HW_EGFR = list(`L858R`=c(12,14), `19DEL`=c(8,11),
                                 `T790M`=c(10,12), `L861Q`=c(12,15),
-                                `G719X`=c(12,15), `Ins20`=c(11,14),
+                                `G719X`=c(12,15), `INS20`=c(11,14),
                                 `S768I`=c(12,15), TAR_UP = 38,
                                 POS_CTRL_UP = 30,
                                 W_CTRL_UP = 30,
@@ -94,6 +94,10 @@ tbl_res_target <- reactive({
   tbl_res() %>% filter(`Reporter` == input$REPORTER)
 })
 
+smp_names <- reactive({
+  setdiff(tbl_res_target()$`Sample Name` %>% unique(), c(input$POS_CTRL, input$NEG_CTRL))
+})
+
 smp_number <- reactive({
   (tbl_res_target()$`Sample Name` %>% unique() %>% length()) - 2
 })
@@ -139,14 +143,24 @@ tbl_amp_pn <- reactive({
 
 # 选出检测到CT值的结果作图
 
+res_pos <- reactive({
+  tbl_res_target() %>%
+    filter(`Target Name` != input$TARGET_REF, !is.na(`CT`),
+           !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)) %>%
+    select(`Sample Name`, `Target Name`)
+})
+
+res_neg <- reactive({
+  tibble(`Sample Name` = setdiff(smp_names(), res_pos()$`Sample Name`), `Target Name` = input$TARGET_REF)
+})
+
+
+
 st_choices <- reactive({
   if (nrow(tbl_res_target()) == 0) {
     "Sample | Target"
   } else {
-    tbl_res_target() %>%
-      filter(`Target Name` != input$TARGET_REF, !is.na(`CT`),
-             !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)) %>%
-      select(`Sample Name`, `Target Name`) %>%
+    bind_rows(res_pos(), res_neg()) %>% arrange(`Sample Name`)%>%
       apply(MARGIN = 1, paste, collapse = " | ")
   }
 })
@@ -166,6 +180,7 @@ Column {data-width=400}
 ```{r}
 renderDataTable(tbl_res() %>% select(c(2,4,5,7,9)) %>%
                           filter(`Reporter` == input$REPORTER) %>%
+                          arrange(`Sample Name`) %>%
                           mutate(`Sample Name` = as.factor(`Sample Name`),
                                  `Target Name` = as.factor(`Target Name`)) %>%
                           datatable(filter = 'top', fillContainer = TRUE,
@@ -195,6 +210,8 @@ delta_Ct <- reactive(ann_row()$CT[ann_row()$`Target Name` == p_target()] -
 conclusion <- reactive(
   if (nrow(ann_row()) == 0) {
     ""
+  } else if (nrow(ann_row()) == 1) {
+    "未检测到阳性突变"
   } else if (ann_row()$CT[ann_row()$`Target Name` == p_target()] > CT_CUTOFF[[input$KIT_BRAND]][["TAR_UP"]]) {
     paste(p_target(), "突变阴性", sep = "")
   } else if (delta_Ct() <= CT_CUTOFF[[input$KIT_BRAND]][[p_target()]][1]) {
@@ -257,7 +274,12 @@ renderPlotly(
   plot_ly(tbl_res_target() %>% filter(`Target Name` == input$TARGET_REF, !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)),
           x = ~`Sample Name`, y = ~`CT`,  color = ~`Sample Name`,
           type = "scatter", mode = "markers", marker = list(size = 14),
-          symbol = ~`Target Name`, symbols = "x") %>%
+          symbol = ~`Target Name`, symbols = "x",
+          hovertemplate = paste(
+            "%{xaxis.title.text}: %{x}<br>",
+            "%{yaxis.title.text}: %{y:.2f}<br>",
+            "<extra></extra>"
+            )) %>%
   layout(yaxis = list(range = c(7,41), title = 'Ct'), showlegend = FALSE,
          xaxis = list(title = "实验编号"),
           shapes = list(
