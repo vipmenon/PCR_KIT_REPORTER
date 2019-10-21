@@ -20,16 +20,22 @@ library(stringr)
 Sample = 1
 `NA` = 1
 
-CT_CUTOFF = list(HW = list(`L858R`=c(12,14), `19del`=c(8,11),
+CT_CUTOFF = list(HW_EGFR = list(`L858R`=c(12,14), `19del`=c(8,11),
                                 `T790M`=c(10,12), `L861Q`=c(12,15),
                                 `G719X`=c(12,15), `Ins20`=c(11,14),
                                 `S768I`=c(12,15), TAR_UP = 38,
-                                CTRL_UP = 30),
-                 YZY = list(`L858R`=c(7,7), `19DEL`=c(6,6),
+                                POS_CTRL_UP = 30,
+                                W_CTRL_UP = 30,
+                                W_CTRL_LOW = 19,
+                                W_CTRL_TEXT = "石蜡样本Ct值应在19~27之间；<br>非石蜡样本Ct值应在20~30之间"),
+                 YZY_EGFR = list(`L858R`=c(7,7), `19DEL`=c(6,6),
                                 `T790M`=c(7,7), `L861Q`=c(7,7),
                                 `G719X`=c(7,7), `INS20`=c(6,6),
                                 `S768I`=c(7,7), TAR_UP = 36,
-                                CTRL_UP = 30) )
+                                POS_CTRL_UP = 30,
+                                W_CTRL_UP = 30,
+                                W_CTRL_LOW = 23,
+                                W_CTRL_TEXT = "样本质控PCR Ct值应在23~30之间；<br>30<Ct<34，只有突变含量较高的样本可以检测") )
 
 ```
 
@@ -46,8 +52,8 @@ Column {.sidebar data-width=200}
 ```{r}
 selectInput(inputId = "KIT_BRAND", 
             label = "检测试剂盒厂家",
-            choices = list("宏微特斯" = "HW",
-                           "友芝友" = "YZY"))
+            choices = list("宏微特斯" = "HW_EGFR",
+                           "友芝友" = "YZY_EGFR"))
 
 textInput("TARGET_REF", label = "外控Target Name", value = "REF")
 
@@ -88,6 +94,10 @@ tbl_res_target <- reactive({
   tbl_res() %>% filter(`Reporter` == input$REPORTER)
 })
 
+smp_number <- reactive({
+  (tbl_res_target()$`Sample Name` %>% unique() %>% length()) - 2
+})
+
 tbl_amp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Well = integer(), `Delta Rn` = numeric(), `Cycle` = integer())
@@ -109,7 +119,8 @@ tbl_amp_smp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Cycle = integer(), `Delta Rn` = numeric(), `Sample Name` = integer())
   } else {
-    tbl_amp() %>% left_join(tbl_res_target() %>% select(`Well`, `Sample Name`))
+    tbl_amp() %>% left_join(tbl_res_target() %>% select(`Well`, `Sample Name`)) %>%
+      mutate(Cycle = as.integer(Cycle))
   }
 })
 
@@ -120,7 +131,6 @@ tbl_amp_pn <- reactive({
   } else {
     tbl_amp_smp() %>%
       filter(!is.na(`Sample Name`), `Target Name` != input$INT_CTRL) %>%
-      mutate(Cycle = as.integer(Cycle)) %>%
       rowid_to_column() %>%
       spread(`Sample Name`, `Delta Rn`)
       # select(-1) %>%
@@ -168,7 +178,7 @@ renderDataTable(tbl_res() %>% select(c(2,4,5,7,9)) %>%
                                        backgroundColor = styleEqual(input$TARGET_REF, 'lightgreen')) )
 ```
 
-### 阳性/疑似结果扩增曲线
+### 检测结果（阳性/疑似结果扩增曲线）
 
 ```{r}
 p_sample <- reactive({input$sample_target %>% str_split_fixed(" \\| ", 2) %>% first()})
@@ -229,19 +239,46 @@ renderPlotly(
 Column {data-width=400}
 -------------------------------------
    
-### PCR实验参数
+### 样本有效性（质控PCR反应扩增图） & PCR实验参数
 
 ```{r}
+
+smp_ctrl_text <- reactive(list(
+    x = 1,
+    y = 12,
+    text = CT_CUTOFF[[input$KIT_BRAND]][["W_CTRL_TEXT"]],
+    xref = "x",
+    yref = "y",
+    align = 'left',
+    showarrow = FALSE
+  ))
+
+renderPlotly(
+  plot_ly(tbl_res_target() %>% filter(`Target Name` == input$TARGET_REF, !`Sample Name` %in% c(input$POS_CTRL, input$NEG_CTRL)),
+          x = ~`Sample Name`, y = ~`CT`,  color = ~`Sample Name`,
+          type = "scatter", mode = "markers", marker = list(size = 14),
+          symbol = ~`Target Name`, symbols = "x") %>%
+  layout(yaxis = list(range = c(7,41), title = 'Ct'), showlegend = FALSE,
+         xaxis = list(title = "实验编号"),
+          shapes = list(
+            list(type = "rect", fillcolor = "green", line = list(width = 0),
+                 opacity = 0.1, x0 = -0.5, x1 = smp_number() - 0.5, xref = "x",
+                 y0 = CT_CUTOFF[[input$KIT_BRAND]][["W_CTRL_LOW"]],
+                 y1 = CT_CUTOFF[[input$KIT_BRAND]][["W_CTRL_UP"]], yref = "y")),
+         annotations = smp_ctrl_text()
+  )
+)
+
 renderTable(tbl_info() %>% filter(!grepl("Calibration",`参数`)))
 ```   
  
-### 阴性/阳性质控扩增图
+### 试剂盒有效性（阴性/阳性质控扩增图）
     
 ```{r}
 
 neg_ctrl_text <- reactive(
   if (tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$NEG_CTRL] %>% is.na() %>% all()) {
-    "空白对照品结果正常"
+    "空白对照品结果合格"
   } else {
     "空白对照品结果异常"
   }
@@ -251,8 +288,8 @@ pos_ctrl_text <- reactive(
   if (tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$POS_CTRL] %>% is.na() %>% any()) {
     "阳性对照品结果异常"
   } else {
-    if ((tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$POS_CTRL] <= CT_CUTOFF[[input$KIT_BRAND]][["CTRL_UP"]]) %>% all()) {
-      "阳性对照品结果正常"
+    if ((tbl_res_target()$CT[tbl_res_target()$`Sample Name` == input$POS_CTRL] <= CT_CUTOFF[[input$KIT_BRAND]][["POS_CTRL_UP"]]) %>% all()) {
+      "阳性对照品结果合格"
     } else {
       "阳性对照品结果异常"
     }
