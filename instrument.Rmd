@@ -1,0 +1,235 @@
+---
+title: "仪器管理"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(DT)
+library(DBI)
+library(dplyr)
+library(tibble)
+library(shinyjs)
+library(plotly)
+
+mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
+                  password='lims', host='192.168.253.178', port=3306)
+dbSendQuery(mydb,"SET NAMES utf8")
+
+```
+
+仪器管理
+=====================================  
+
+Column {.sidebar data-width=350}
+-----------------------------------------------------------------------
+
+最后更新日期：`r file.mtime("index.Rmd")`
+
+```{r}
+TABLE = "Instrument"
+
+userKeys <- tibble(userKey = 7661L, permission = c("查询","新增","更新","删除"))
+
+rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
+                     instruments = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+
+passwordInput("userKey", label = "用户钥匙", value = NA)
+textOutput("p")
+```
+
+***
+
+```{r}
+useShinyjs(rmd=TRUE)
+
+numericInput("instrumentId", label = "设备编号", value = NA, min = 1)
+
+textInput("name", label = "设备名称")
+
+textInput("instrumentModel", label = "设备型号", value = NA)
+
+textInput("serialNumber", label = "设备序列号")
+
+dateInput("dateCommissioned", label = "启用日期", value = NA)
+
+dateInput("dateDecommissioned", label = "停用日期", value = NA)
+
+actionButton("submit", label = "新增/更新")
+
+tags$span(" ")
+
+actionButton("delete", "删除")
+
+observeEvent(input$userKey, {
+  permissions <- userKeys %>% filter(userKey == input$userKey) %>% pull(permission)
+  rv$permission[["view"]] <- ifelse("查询" %in% permissions, TRUE, FALSE)
+  rv$permission[["delete"]] <- ifelse("删除" %in% permissions, TRUE, FALSE)
+  rv$permission[["insert"]] <- ifelse("新增" %in% permissions, TRUE, FALSE)
+
+  output$p <- renderText(paste("用户权限：", paste(permissions, collapse = "、")))
+
+  if (rv$permission[["view"]]) {
+    output$mainTbl <- renderDT(rv$instruments)
+    output$logText <- renderPrint(rv$log_text)
+    output$chartA <- renderPlotly(plot_ly(rv$instruments %>% group_by(instrumentModel) %>% summarise(Num = length(instrumentModel)),
+                     x = ~`instrumentModel`, y = ~`Num`))
+  } else {
+    output$mainTbl <- renderDT(tibble())
+    output$logText <- renderPrint("")
+    output$chartA <- renderPlotly(plot_ly())
+  }
+
+  if (rv$permission[["delete"]]) {
+    show("delete")
+  } else {
+    hide("delete")
+  }
+  
+  if (rv$permission[["insert"]]) {
+    # enable("submit")
+    show("name", anim = T)
+    show("instrumentModel")
+    show("serialNumber")
+    show("dateCommissioned")
+    show("dateDecommissioned")
+    show("submit")
+  } else {
+    # disable("submit")
+    hide("name")
+    hide("instrumentModel")
+    hide("serialNumber")
+    hide("dateCommissioned")
+    hide("dateDecommissioned")
+    hide("submit")
+  }
+  
+})
+
+observeEvent(input$instrumentId,{
+  
+  if (rv$permission[["view"]]) {
+    updateTextInput(session,"name",value = rv$instruments %>%
+                      filter(instrumentId == input$instrumentId) %>%
+                      pull(name))
+    updateTextInput(session,"instrumentModel",value = rv$instruments %>%
+                      filter(instrumentId == input$instrumentId) %>%
+                      pull(instrumentModel))
+    updateTextInput(session,"serialNumber",value = rv$instruments %>%
+                      filter(instrumentId == input$instrumentId) %>%
+                      pull(serialNumber))
+    updateDateInput(session,"dateCommissioned",value = rv$instruments %>%
+                      filter(instrumentId == input$instrumentId) %>%
+                      pull(dateCommissioned))
+    updateDateInput(session,"dateDecommissioned",value = rv$instruments %>%
+                      filter(instrumentId == input$instrumentId) %>%
+                      pull(dateDecommissioned))
+  } else {
+    renderText("用户权限不足")
+  }
+
+})
+
+# 日志记录查询
+
+get_log <- function(table) {
+  log_sql <- paste("SELECT u.name name, o.chinese operation, t.chinese `table`, recordId, `timestamp` `time`
+  FROM Log l
+  LEFT JOIN `User` u on u.userKey = l.userKey
+  LEFT JOIN `Operation` o on l.operationId = o.id
+  LEFT JOIN `Table` t on l.tableId = t.id
+  WHERE t.name = '", table, "'", sep = "")
+  
+  log_tbl <- dbGetQuery(mydb, log_sql)
+  
+  paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
+}
+
+rv$log_text <- get_log(TABLE)
+
+# 新增与更新
+
+observeEvent(input$submit, {
+  serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
+  dateCommissioned <- ifelse(toString(input$dateCommissioned) == "", "NULL", toString(input$dateCommissioned))
+  dateDecommissioned <- ifelse(toString(input$dateDecommissioned) == "", "NULL", toString(input$dateDecommissioned))
+  submitValues <- paste(input$instrumentId, ", '", paste(input$name,
+                  input$instrumentModel, serialNumber, dateCommissioned,
+                  dateDecommissioned, sep = "', '"), "'", sep = "")
+  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE
+          instrumentId = ", input$instrumentId, ",
+          name = '", input$name, "',
+          instrumentModel = '", input$instrumentModel, "',
+          serialNumber = '", serialNumber, "',
+          dateCommissioned = '", dateCommissioned, "',
+          dateDecommissioned = '", dateDecommissioned, "'", sep = "")
+  insert_sql <- gsub("'NULL'", "NULL", insert_sql)
+  rv$sql_exe <- dbExecute(mydb, insert_sql)
+  
+  # 添加日志
+  
+  if (input$instrumentId %in% rv$instruments$instrumentId) {
+    log_values <- paste(input$userKey, 1, 3,
+                  input$instrumentId, sep = ", ")
+  } else {
+    log_values <- paste(input$userKey, 1, 2,
+                  input$instrumentId, sep = ", ")
+  }
+  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
+  dbExecute(mydb, log_ins_sql)
+  rv$log_text <- get_log(TABLE)
+  
+  rv$instruments <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+})
+
+# 删除记录
+
+observeEvent(input$delete, {
+  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `instrumentId` = ", input$instrumentId, sep = "")
+  rv$sql_exe <- dbExecute(mydb, delete_sql)
+  
+  # 添加日志
+  
+  log_values <- paste(input$userKey, 1, 4,
+                input$instrumentId, sep = ", ")
+
+  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", NULL, "\" , now())", sep = "")
+  dbExecute(mydb, log_ins_sql)
+  rv$log_text <- get_log(TABLE)
+  
+  rv$instruments <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  
+})
+
+```
+
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### 仪器列表
+
+```{r}
+DT::dataTableOutput("mainTbl")
+```
+
+Column {data-width=200}
+-----------------------------------------------------------------------
+
+### 操作日志
+
+```{r}
+verbatimTextOutput("logText")
+
+```
+
+### Chart A
+
+```{r}
+plotlyOutput("chartA")
+```
+

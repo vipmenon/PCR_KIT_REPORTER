@@ -176,8 +176,28 @@ Column {data-width=400}
 -------------------------------------
     
 ### PCR Results
-    
+
 ```{r}
+# x = reactiveValues(df = NULL)
+# x$df <- data.frame(`Sample Name` = paste("Sample", 1:10),
+#                姓名=1:10,性别=1:10,年龄=1:10,
+#                民族=1:10,送样单位=1:10,样本编号=1:10,
+#                样本类型=1:10, 采样日期=1:10, 
+#                送达日期=1:10,病理诊断=1:10)
+# 
+# observeEvent(input$x1_cell_edit, {
+#   info = input$x1_cell_edit
+#   output$info_render = renderPrint(str(info))
+#   i = info$row
+#   j = info$col
+#   v = info$value
+# 
+#   x$df[i, j] <- input$x1_cell_edit$value
+# })
+# 
+# DT::dataTableOutput("x1")
+# output$x1 = renderDataTable(x$df, selection = 'none', editable = TRUE)
+
 renderDataTable(tbl_res() %>% select(c(2,4,5,7,9)) %>%
                           filter(`Reporter` == input$REPORTER) %>%
                           arrange(`Sample Name`) %>%
