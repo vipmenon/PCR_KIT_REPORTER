@@ -28,6 +28,14 @@ CT_CUTOFF = list(HW_EGFR = list(`L858R`=c(12,14), `19DEL`=c(8,11),
                                 W_CTRL_UP = 30,
                                 W_CTRL_LOW = 19,
                                 W_CTRL_TEXT = "石蜡样本Ct值应在19~27之间；<br>非石蜡样本Ct值应在20~30之间"),
+                 XNMD_EGFR = list(`L858R`=c(8,8), `19DEL`=c(8,8),
+                                `T790M`=c(8,8), `L861Q`=c(8,8),
+                                `G719X`=c(8,8), `INS20`=c(8,8),
+                                `S768I`=c(8,8), TAR_UP = 38,
+                                POS_CTRL_UP = 30,
+                                W_CTRL_UP = 30,
+                                W_CTRL_LOW = 19,
+                                W_CTRL_TEXT = "外控Ct 值（CtW）<30"),
                  YZY_EGFR = list(`L858R`=c(7,7), `19DEL`=c(6,6),
                                 `T790M`=c(7,7), `L861Q`=c(7,7),
                                 `G719X`=c(7,7), `INS20`=c(6,6),
@@ -53,6 +61,7 @@ Column {.sidebar data-width=200}
 selectInput(inputId = "KIT_BRAND", 
             label = "检测试剂盒厂家",
             choices = list("宏微特斯" = "HW_EGFR",
+                           "鑫诺美迪" = "XNMD_EGFR",
                            "友芝友" = "YZY_EGFR"))
 
 textInput("TARGET_REF", label = "外控Target Name", value = "REF")
@@ -86,7 +95,7 @@ tbl_res <- reactive({
            `Target Name` = character(),	Task = character(),
            Reporter = character(),	Quencher = character(),	CT = numeric())
   } else {
-    read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 34)
+    read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 40)
   }
 })
 
@@ -106,7 +115,7 @@ tbl_amp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Well = integer(), `Delta Rn` = numeric(), `Cycle` = integer())
   } else {
-    read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 34,
+    read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 40,
                col_types = c("numeric", "text", "text", "skip", "numeric"))
   }
 })
@@ -349,7 +358,7 @@ ctrl_color <- reactive(
 ctrl_ann_lst <- reactive({
   list(
     x = 10,
-    y = c(0.27,0.17),
+    y = c(drn_ylim()*0.27, drn_ylim()*0.17),
     text = c(neg_ctrl_text()[1], pos_ctrl_text()[1]),
     font = list(color = ctrl_color()),
     xref = "x",

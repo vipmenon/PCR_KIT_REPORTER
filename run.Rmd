@@ -27,21 +27,19 @@ dbSendQuery(mydb,"SET NAMES utf8")
 
 ```
 
-仪器管理
+样本上机管理
 =====================================  
 
 Column {.sidebar data-width=350}
 -----------------------------------------------------------------------
 
-最后更新日期：`r file.mtime("instrument.Rmd")`
+最后更新日期：`r file.mtime("run.Rmd")`
 
 ```{r}
-TABLE = "Instrument"
-
-userKeys <- tibble(userKey = 7661L, permission = c("查询","新增","更新","删除"))
+TABLE = "Run"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
-                     instruments = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+                     table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -52,17 +50,13 @@ textOutput("p")
 ```{r}
 useShinyjs(rmd=TRUE)
 
-numericInput("instrumentId", label = "设备编号", value = NA, min = 1)
+numericInput("userId", label = "用户钥匙", value = NA, min = 1)
 
-textInput("name", label = "设备名称")
+textInput("name", label = "姓名")
 
-textInput("instrumentModel", label = "设备型号", value = NA)
+textInput("department", label = "部门", value = NA)
 
-textInput("serialNumber", label = "设备序列号")
-
-dateInput("dateCommissioned", label = "启用日期", value = NA)
-
-dateInput("dateDecommissioned", label = "停用日期", value = NA)
+selectInput("isValid", label = "是否有效", choices = list("是" = 1, "否" = 0))
 
 actionButton("submit", label = "新增/更新")
 
@@ -75,16 +69,17 @@ observeEvent(input$userKey, {
   if (input$userKey == "") {
     rv$user <- tibble(userKey = integer(), permission = character())
   } else {
-    user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`
+    user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname
                 FROM `Permission` p
                 LEFT JOIN `User` u on p.userKey = u.userKey
                 LEFT JOIN `Operation` o on p.`operationId` = o.`id`
-                WHERE u.`userKey` = ", input$userKey, sep = "")
+                LEFT JOIN `Table` t on p.`tableId` = t.`id`
+                WHERE t.`name` = '", TABLE, "'
+                AND u.`userKey` = ", input$userKey, sep = "")
     rv$user <- dbGetQuery(mydb, user_sql)
-    # rv$user <- tibble(userKey = 1, permission = "character()")
   }
 
-  print(rv$user)
+  # print(rv$user)
   # permissions <- userKeys %>% filter(userKey == input$userKey) %>% pull(permission)
   permissions <- rv$user %>% filter(userKey == input$userKey) %>% pull(permission)
   rv$permission[["view"]] <- ifelse("查询" %in% permissions, TRUE, FALSE)
@@ -94,10 +89,10 @@ observeEvent(input$userKey, {
   output$p <- renderText(paste("用户权限：", paste(permissions, collapse = "、")))
 
   if (rv$permission[["view"]]) {
-    output$mainTbl <- renderDT(rv$instruments)
+    output$mainTbl <- renderDT(rv$table)
     output$logText <- renderPrint(rv$log_text)
-    output$chartA <- renderPlotly(plot_ly(rv$instruments %>% group_by(instrumentModel) %>% summarise(Num = length(instrumentModel)),
-                     x = ~`instrumentModel`, y = ~`Num`))
+    output$chartA <- renderPlotly(plot_ly(rv$table %>% group_by(department) %>% summarise(Num = length(department)),
+                     x = ~`department`, y = ~`Num`))
   } else {
     output$mainTbl <- renderDT(tibble())
     output$logText <- renderPrint("")
@@ -113,41 +108,27 @@ observeEvent(input$userKey, {
   if (rv$permission[["insert"]]) {
     # enable("submit")
     show("name", anim = T)
-    show("instrumentModel")
-    show("serialNumber")
-    show("dateCommissioned")
-    show("dateDecommissioned")
+    show("department")
+    show("isValid")
     show("submit")
   } else {
     # disable("submit")
     hide("name")
-    hide("instrumentModel")
-    hide("serialNumber")
-    hide("dateCommissioned")
-    hide("dateDecommissioned")
+    hide("department")
+    hide("isValid")
     hide("submit")
   }
   
 })
 
-observeEvent(input$instrumentId,{
+observeEvent(input$userId,{
   
   if (rv$permission[["view"]]) {
-    updateTextInput(session,"name",value = rv$instruments %>%
-                      filter(instrumentId == input$instrumentId) %>%
-                      pull(name))
-    updateTextInput(session,"instrumentModel",value = rv$instruments %>%
-                      filter(instrumentId == input$instrumentId) %>%
-                      pull(instrumentModel))
-    updateTextInput(session,"serialNumber",value = rv$instruments %>%
-                      filter(instrumentId == input$instrumentId) %>%
-                      pull(serialNumber))
-    updateDateInput(session,"dateCommissioned",value = rv$instruments %>%
-                      filter(instrumentId == input$instrumentId) %>%
-                      pull(dateCommissioned))
-    updateDateInput(session,"dateDecommissioned",value = rv$instruments %>%
-                      filter(instrumentId == input$instrumentId) %>%
-                      pull(dateDecommissioned))
+    for (field in c("name", "department", "isValid")) {
+      updateTextInput(session, field, value = rv$table %>%
+                      filter(userKey == input$userId) %>%
+                      pull(field))
+    }
   } else {
     renderText("用户权限不足")
   }
@@ -177,7 +158,11 @@ get_log <- function(table) {
   
   log_tbl <- dbGetQuery(mydb, log_sql)
   
-  paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
+  if (nrow(log_tbl) > 0) {
+    paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
+  } else {
+    return("无操作记录")
+  }
 }
 
 rv$log_text <- get_log(TABLE)
@@ -185,54 +170,53 @@ rv$log_text <- get_log(TABLE)
 # 新增与更新
 
 observeEvent(input$submit, {
-  serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
-  dateCommissioned <- ifelse(toString(input$dateCommissioned) == "", "NULL", toString(input$dateCommissioned))
-  dateDecommissioned <- ifelse(toString(input$dateDecommissioned) == "", "NULL", toString(input$dateDecommissioned))
-  submitValues <- paste(input$instrumentId, ", '", paste(input$name,
-                  input$instrumentModel, serialNumber, dateCommissioned,
-                  dateDecommissioned, sep = "', '"), "'", sep = "")
+  validate(
+    need(input$name, '请输入姓名'),
+    need(input$department, '请输入部门')
+  )
+  # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
+  # dateCommissioned <- ifelse(toString(input$dateCommissioned) == "", "NULL", toString(input$dateCommissioned))
+  submitValues <- paste(input$userId, ", '", paste(input$name,
+                  input$department, sep = "', '"), "',", input$isValid, ", now()", sep = "")
   insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE
-          instrumentId = ", input$instrumentId, ",
           name = '", input$name, "',
-          instrumentModel = '", input$instrumentModel, "',
-          serialNumber = '", serialNumber, "',
-          dateCommissioned = '", dateCommissioned, "',
-          dateDecommissioned = '", dateDecommissioned, "'", sep = "")
-  insert_sql <- gsub("'NULL'", "NULL", insert_sql)
+          department = '", input$department, "',
+          isValid = '", input$isValid, "'", sep = "")
+  # insert_sql <- gsub("'NULL'", "NULL", insert_sql)
   rv$sql_exe <- dbExecute(mydb, insert_sql)
   
   # 添加日志
   
-  if (input$instrumentId %in% rv$instruments$instrumentId) {
+  if (input$userId %in% rv$table$userKey) {
     log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
-                  input$instrumentId, sep = ", ")
+                  input$userId, sep = ", ")
   } else {
     log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
-                  input$instrumentId, sep = ", ")
+                  input$userId, sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
   dbExecute(mydb, log_ins_sql)
   rv$log_text <- get_log(TABLE)
   
-  rv$instruments <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
-  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `instrumentId` = ", input$instrumentId, sep = "")
+  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `userKey` = ", input$userId, sep = "")
   rv$sql_exe <- dbExecute(mydb, delete_sql)
   
   # 添加日志
   
   log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
-                input$instrumentId, sep = ", ")
+                input$userId, sep = ", ")
 
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", NULL, "\" , now())", sep = "")
   dbExecute(mydb, log_ins_sql)
   rv$log_text <- get_log(TABLE)
   
-  rv$instruments <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
   
 })
 
@@ -258,7 +242,7 @@ verbatimTextOutput("logText")
 
 ```
 
-### Chart A
+### 汇总计数
 
 ```{r}
 plotlyOutput("chartA")
