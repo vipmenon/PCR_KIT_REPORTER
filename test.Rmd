@@ -40,6 +40,12 @@ TABLE = "Test"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+## 主窗口表格内容
+mainTbl_sql <- "SELECT testNumber `项目编号`, title `项目名称`, category `项目类别`,
+                       if(isValid = 0, '否', '是') `是否开展`,
+                       updatetime `更新日期`
+                 FROM `Test`"
+rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -56,9 +62,13 @@ textInput("title", label = "项目名称")
 
 textInput("category", label = "项目类别", value = NA)
 
-selectInput("isValid", label = "是否有效", choices = list("是" = 1, "否" = 0))
+selectInput("isValid", label = "是否开展", choices = list("是" = 1, "否" = 0))
 
 actionButton("submit", label = "新增/更新")
+
+query_id <- "testNumber"
+
+update_ary <- c("title", "category", "isValid")
 
 tags$span(" ")
 
@@ -69,34 +79,39 @@ observeEvent(input$userKey, {
   if (input$userKey == "") {
     rv$user <- tibble(userKey = integer(), permission = character())
   } else {
-    user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname
+    user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
                 FROM `Permission` p
-                LEFT JOIN `User` u on p.userKey = u.userKey
+                LEFT JOIN `User` u on p.userId = u.userKey
                 LEFT JOIN `Operation` o on p.`operationId` = o.`id`
                 LEFT JOIN `Table` t on p.`tableId` = t.`id`
                 WHERE t.`name` = '", TABLE, "'
+                AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
     rv$user <- dbGetQuery(mydb, user_sql)
   }
 
-  # print(rv$user)
-  # permissions <- userKeys %>% filter(userKey == input$userKey) %>% pull(permission)
-  permissions <- rv$user %>% filter(userKey == input$userKey) %>% pull(permission)
+  permissions <- rv$user %>% filter(userKey == input$userKey, isValid == 1) %>%
+                         pull(permission)
   rv$permission[["view"]] <- ifelse("查询" %in% permissions, TRUE, FALSE)
   rv$permission[["delete"]] <- ifelse("删除" %in% permissions, TRUE, FALSE)
   rv$permission[["insert"]] <- ifelse("新增" %in% permissions, TRUE, FALSE)
 
   output$p <- renderText(paste("用户权限：", paste(permissions, collapse = "、")))
 
-  if (rv$permission[["view"]] & nrow(rv$table) > 0) {
-    output$mainTbl <- renderDT(rv$table)
-    output$logText <- renderPrint(rv$log_text)
-    output$chartA <- renderPlotly(plot_ly(rv$table %>% group_by(category) %>% summarise(Num = length(category)),
-                     x = ~`category`, y = ~`Num`, type = "bar"))
-  } else {
-    output$mainTbl <- renderDT(tibble())
-    output$logText <- renderPrint("")
-    output$chartA <- renderPlotly(plot_ly(type = "bar"))
+  if (rv$permission[["view"]] == TRUE) {
+    if (nrow(rv$mainTbl) > 0) {
+      output$mainTbl <- renderDT(rv$mainTbl, filter = 'top', options =
+                                   list(pageLength = 15, autoWidth = TRUE), rownames= FALSE)
+      output$logText <- renderPrint(rv$log_text)
+      output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
+                                              group_by(`项目类别`) %>%
+                                              summarise(Num = length(`项目类别`)),
+                                            x = ~`项目类别`, y = ~`Num`, type = "bar"))
+    } else {
+      output$mainTbl <- renderDT(tibble())
+      output$logText <- renderPrint("")
+      output$chartA <- renderPlotly(plot_ly(type = "bar"))
+    }
   }
 
   if (rv$permission[["delete"]]) {
@@ -128,7 +143,7 @@ observeEvent(input$testNumber,{
   if (rv$permission[["view"]]) {
     for (field in c("title", "category", "isValid")) {
       updateTextInput(session, field, value = rv$table %>%
-                      filter(testNumber == input$testNumber) %>%
+                      filter(get(query_id) == input[[query_id]]) %>%
                       pull(field))
     }
   } else {
@@ -204,7 +219,8 @@ observeEvent(input$submit, {
   dbExecute(mydb, log_ins_sql)
   rv$log_text <- get_log(TABLE)
   
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  ## 刷新主表格内容
+  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 })
 
 # 删除记录

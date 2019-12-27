@@ -75,18 +75,22 @@ observeEvent(input$userKey, {
   if (input$userKey == "") {
     rv$user <- tibble(userKey = integer(), permission = character())
   } else {
-    user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`
+    user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
                 FROM `Permission` p
-                LEFT JOIN `User` u on p.userKey = u.userKey
+                LEFT JOIN `User` u on p.userId = u.userKey
                 LEFT JOIN `Operation` o on p.`operationId` = o.`id`
-                WHERE u.`userKey` = ", input$userKey, sep = "")
+                LEFT JOIN `Table` t on p.`tableId` = t.`id`
+                WHERE t.`name` = '", TABLE, "'
+                AND u.isValid = 1
+                AND u.`userKey` = ", input$userKey, sep = "")
     rv$user <- dbGetQuery(mydb, user_sql)
     # rv$user <- tibble(userKey = 1, permission = "character()")
   }
 
   print(rv$user)
   # permissions <- userKeys %>% filter(userKey == input$userKey) %>% pull(permission)
-  permissions <- rv$user %>% filter(userKey == input$userKey) %>% pull(permission)
+  permissions <- rv$user %>% filter(userKey == input$userKey, isValid == 1) %>%
+                         pull(permission)
   rv$permission[["view"]] <- ifelse("查询" %in% permissions, TRUE, FALSE)
   rv$permission[["delete"]] <- ifelse("删除" %in% permissions, TRUE, FALSE)
   rv$permission[["insert"]] <- ifelse("新增" %in% permissions, TRUE, FALSE)
@@ -112,6 +116,7 @@ observeEvent(input$userKey, {
   
   if (rv$permission[["insert"]]) {
     # enable("submit")
+    show("instrumentId")
     show("name", anim = T)
     show("instrumentModel")
     show("serialNumber")
@@ -120,6 +125,7 @@ observeEvent(input$userKey, {
     show("submit")
   } else {
     # disable("submit")
+    hide("instrumentId")
     hide("name")
     hide("instrumentModel")
     hide("serialNumber")
