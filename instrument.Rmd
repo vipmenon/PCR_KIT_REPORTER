@@ -72,7 +72,7 @@ actionButton("delete", "删除")
 
 observeEvent(input$userKey, {
   # 查询用户permission
-  if (input$userKey == "") {
+  if (grepl("^\\d+$", input$userKey)) {
     rv$user <- tibble(userKey = integer(), permission = character())
   } else {
     user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
@@ -179,7 +179,8 @@ get_log <- function(table) {
   LEFT JOIN `User` u on u.userKey = l.userKey
   LEFT JOIN `Operation` o on l.operationId = o.id
   LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'", sep = "")
+  WHERE t.name = '", table, "'
+  ORDER BY `timestamp` DESC", sep = "")
   
   log_tbl <- dbGetQuery(mydb, log_sql)
   
@@ -234,7 +235,7 @@ observeEvent(input$delete, {
   log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
                 input$instrumentId, sep = ", ")
 
-  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", NULL, "\" , now())", sep = "")
+  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
   dbExecute(mydb, log_ins_sql)
   rv$log_text <- get_log(TABLE)
   

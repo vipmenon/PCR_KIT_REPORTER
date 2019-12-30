@@ -87,7 +87,7 @@ actionButton("delete", "删除")
 
 observeEvent(input$userKey, {
   # 查询用户permission
-  if (input$userKey == "") {
+  if (grepl("^\\d+$", input$userKey)) {
     rv$user <- tibble(userKey = integer(), permission = character())
   } else {
     user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
@@ -110,19 +110,17 @@ observeEvent(input$userKey, {
   output$p <- renderText(paste("用户权限：", paste(permissions, collapse = "、")))
 
   if (rv$permission[["view"]] == TRUE) {
-    if (nrow(rv$mainTbl) > 0) {
-      output$mainTbl <- renderDT(rv$mainTbl, filter = 'top', options =
+      output$mainTbl <- renderDT(rv$mainTbl, options =
                                    list(pageLength = 15, autoWidth = TRUE), rownames= FALSE)
       output$logText <- renderPrint(rv$log_text)
       output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
                                               group_by(`管理模块`) %>%
                                               summarise(Num = length(`管理模块`)),
                                             x = ~`管理模块`, y = ~`Num`, type = "bar"))
-    } else {
-      output$mainTbl <- renderDT(tibble())
-      output$logText <- renderPrint("")
-      output$chartA <- renderPlotly(plot_ly(type = "bar"))
-    }
+  } else {
+    output$mainTbl <- renderDT(tibble())
+    output$logText <- renderPrint("")
+    output$chartA <- renderPlotly(plot_ly(type = "bar"))
   }
 
   if (rv$permission[["delete"]]) {
@@ -131,15 +129,11 @@ observeEvent(input$userKey, {
     hide("delete")
   }
   
-  if (rv$permission[["insert"]]) {
-    for(ele in c(query_id, update_ary)) {
+  for(ele in c(query_id, update_ary, "submit")) {
+    if (rv$permission[["insert"]]) {
       show(ele)
-      show("submit")
-    }
-  } else {
-    for(ele in c(query_id, update_ary)) {
+    } else {
       hide(ele)
-      hide("submit")
     }
   }
   
@@ -178,7 +172,8 @@ get_log <- function(table) {
   LEFT JOIN `User` u on u.userKey = l.userKey
   LEFT JOIN `Operation` o on l.operationId = o.id
   LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'", sep = "")
+  WHERE t.name = '", table, "'
+  ORDER BY `timestamp` DESC", sep = "")
   
   log_tbl <- dbGetQuery(mydb, log_sql)
   
@@ -194,21 +189,21 @@ rv$log_text <- get_log(TABLE)
 ## 新增与更新
 
 observeEvent(input$submit, {
+  ## Single-bracket indexing of reactivevalues object is not allowed.
+  ## So isolate it first
+  inputs <- isolate(reactiveValuesToList(input))
   validate(
-    need(input$userId, '请选择用户'),
-    need(input$tableId, '请选择模块'),
-    need(input$operationId, '请选择操作'),
-    need(input$isValid, '请选择是否有效')
+    for (ele in update_ary) {
+      need(input[[eval(ele)]], '请输入信息')
+    }
   )
   ## NULL value manipulation
   # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
   # dateCommissioned <- ifelse(toString(input$dateCommissioned) == "", "NULL", toString(input$dateCommissioned))
-  submitValues <- paste(input[[query_id]], input$userId, input$tableId, input$operationId, input$isValid, "now()", sep = ", ")
-  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE
-          userId = ", input$userId, ",
-          tableId = ", input$tableId, ",
-          operationId = ", input$operationId, ",
-          isValid = ", input$isValid, sep = "")
+  submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
+  
+  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE ",
+                      paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
   # insert_sql <- gsub("'NULL'", "NULL", insert_sql)
   rv$sql_exe <- dbExecute(mydb, insert_sql)
   
@@ -216,36 +211,41 @@ observeEvent(input$submit, {
   
   if (input[[query_id]] %in% rv$table[[query_id]]) {
     log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
-                  input[[query_id]], sep = ", ")
+                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  sep = ", ")
   } else {
     log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
-                  input[[query_id]], sep = ", ")
+                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
   dbExecute(mydb, log_ins_sql)
-  rv$log_text <- get_log(TABLE)
   
   ## 刷新主表格内容
+  rv$log_text <- get_log(TABLE)
   rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
-  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = ", input[[query_id]], sep = "")
+  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
   rv$sql_exe <- dbExecute(mydb, delete_sql)
   
   # 添加日志
   
   log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
-                input[[query_id]], sep = ", ")
+                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  sep = ", ")
 
-  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", NULL, "\" , now())", sep = "")
+  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
   dbExecute(mydb, log_ins_sql)
+  
+  ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  
+  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
   rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
-  
 })
 
 ```
@@ -254,7 +254,7 @@ observeEvent(input$delete, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 仪器列表
+### 权限列表
 
 ```{r}
 DT::dataTableOutput("mainTbl")

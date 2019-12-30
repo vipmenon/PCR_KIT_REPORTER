@@ -27,19 +27,27 @@ dbSendQuery(mydb,"SET NAMES utf8")
 
 ```
 
-人员管理
+项目管理
 =====================================  
 
 Column {.sidebar data-width=350}
 -----------------------------------------------------------------------
 
-最后更新日期：`r file.mtime("user.Rmd")`
+最后更新日期：`r file.mtime("specimen.Rmd")`
 
 ```{r}
-TABLE = "User"
+TABLE = "Specimen"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+## 主窗口表格内容
+mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`,
+                       specimenType `标本类型`, specimenStatus `标本状态`,
+                       medicalNumber `病案号`, institution `送检单位`, originalNumber `原始编号`,
+                       doctor `送检医师`, collectDate `采集日期`, receiveDate `接受日期`,
+                       updatetime `更新日期`
+                 FROM `Specimen`"
+rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -50,15 +58,38 @@ textOutput("p")
 ```{r}
 useShinyjs(rmd=TRUE)
 
-numericInput("userId", label = "用户钥匙", value = NA, min = 1)
+textInput("specimenNumber", label = "标本编号")
 
 textInput("name", label = "姓名")
 
-textInput("department", label = "部门", value = NA)
+textInput("gender", label = "性别")
 
-selectInput("isValid", label = "是否有效", choices = list("是" = 1, "否" = 0))
+textInput("age", label = "年龄")
+
+selectInput("specimenType", label = "标本类型", choices = c("手术组织", "穿刺组织", "全血",
+                                    "血浆", "血清", "尿液", "粪便", "分泌物", "呕吐物",
+                                    "唾液", "脑脊液", "淋巴液", "房水","其他"))
+
+selectInput("specimenStatus", label = "标本状态", choices = c("正常", "溶血", "污染", "损坏",
+                                                        "时间过久", "量较少"))
+
+textInput("medicalNumber", label = "病案号")
+
+textInput("institution", label = "送检单位")
+
+textInput("originalNumber", label = "原始编号")
+
+textInput("doctor", label = "送检医师")
+
+dateInput("collectDate", label = "采集日期", value = NA)
+
+dateInput("receiveDate", label = "接受日期", value = Sys.Date())
 
 actionButton("submit", label = "新增/更新")
+
+query_id <- "specimenNumber"
+
+update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "originalNumber", "doctor", "collectDate", "receiveDate")
 
 tags$span(" ")
 
@@ -80,8 +111,6 @@ observeEvent(input$userKey, {
     rv$user <- dbGetQuery(mydb, user_sql)
   }
 
-  # print(rv$user)
-  # permissions <- userKeys %>% filter(userKey == input$userKey) %>% pull(permission)
   permissions <- rv$user %>% filter(userKey == input$userKey, isValid == 1) %>%
                          pull(permission)
   rv$permission[["view"]] <- ifelse("查询" %in% permissions, TRUE, FALSE)
@@ -90,11 +119,14 @@ observeEvent(input$userKey, {
 
   output$p <- renderText(paste("用户权限：", paste(permissions, collapse = "、")))
 
-  if (rv$permission[["view"]]) {
-    output$mainTbl <- renderDT(rv$table)
-    output$logText <- renderPrint(rv$log_text)
-    output$chartA <- renderPlotly(plot_ly(rv$table %>% group_by(department) %>% summarise(Num = length(department)),
-                     x = ~`department`, y = ~`Num`, type = "bar"))
+  if (rv$permission[["view"]] == TRUE) {
+      output$mainTbl <- renderDT(rv$mainTbl, options =
+                                   list(pageLength = 15, autoWidth = TRUE, scrollX = TRUE), rownames= FALSE)
+      output$logText <- renderPrint(rv$log_text)
+      output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
+                                              group_by(`标本类型`) %>%
+                                              summarise(Num = length(`标本类型`)),
+                                            x = ~`标本类型`, y = ~`Num`, type = "bar"))
   } else {
     output$mainTbl <- renderDT(tibble())
     output$logText <- renderPrint("")
@@ -107,30 +139,22 @@ observeEvent(input$userKey, {
     hide("delete")
   }
   
-  if (rv$permission[["insert"]]) {
-    # enable("submit")
-    show("userId")
-    show("name", anim = T)
-    show("department")
-    show("isValid")
-    show("submit")
-  } else {
-    # disable("submit")
-    hide("userId")
-    hide("name")
-    hide("department")
-    hide("isValid")
-    hide("submit")
+  for(ele in c(query_id, update_ary, "submit")) {
+    if (rv$permission[["insert"]]) {
+      show(ele)
+    } else {
+      hide(ele)
+    }
   }
-  
+
 })
 
-observeEvent(input$userId,{
+observeEvent(input[[query_id]],{
   
   if (rv$permission[["view"]]) {
-    for (field in c("name", "department", "isValid")) {
+    for (field in update_ary) {
       updateTextInput(session, field, value = rv$table %>%
-                      filter(userKey == input$userId) %>%
+                      filter(get(query_id) == input[[query_id]]) %>%
                       pull(field))
     }
   } else {
@@ -175,54 +199,67 @@ rv$log_text <- get_log(TABLE)
 # 新增与更新
 
 observeEvent(input$submit, {
+  ## Single-bracket indexing of reactivevalues object is not allowed.
+  ## So isolate it first
+  inputs <- isolate(reactiveValuesToList(input))
   validate(
-    need(input$name, '请输入姓名'),
-    need(input$department, '请输入部门')
+    for (ele in update_ary) {
+      need(input[[eval(ele)]], '请输入信息')
+    }
   )
   # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
-  # dateCommissioned <- ifelse(toString(input$dateCommissioned) == "", "NULL", toString(input$dateCommissioned))
-  submitValues <- paste(input$userId, ", '", paste(input$name,
-                  input$department, sep = "', '"), "',", input$isValid, ", now()", sep = "")
-  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE
-          name = '", input$name, "',
-          department = '", input$department, "',
-          isValid = '", input$isValid, "'", sep = "")
-  # insert_sql <- gsub("'NULL'", "NULL", insert_sql)
+  inputs$collectDate <- ifelse(toString(input$collectDate) == "", "NULL", toString(input$collectDate))
+  inputs$receiveDate <- ifelse(toString(input$receiveDate) == "", "NULL", toString(input$receiveDate))
+  
+  submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
+  
+  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE ",
+                      paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
+
+  insert_sql <- gsub("'NULL'", "NULL", insert_sql)
   rv$sql_exe <- dbExecute(mydb, insert_sql)
   
   # 添加日志
   
-  if (input$userId %in% rv$table$userKey) {
+  if (input[[query_id]] %in% rv$table[[query_id]]) {
     log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
-                  input$userId, sep = ", ")
+                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  sep = ", ")
   } else {
     log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
-                  input$userId, sep = ", ")
+                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
+
   dbExecute(mydb, log_ins_sql)
+
+  ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  
+  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
   rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
-  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `userKey` = ", input$userId, sep = "")
+  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
   rv$sql_exe <- dbExecute(mydb, delete_sql)
-  
+
   # 添加日志
-  
+
   log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
-                input$userId, sep = ", ")
+                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  sep = ", ")
 
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
+
   dbExecute(mydb, log_ins_sql)
+  
+  ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  
+  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
   rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
-  
 })
 
 ```
@@ -231,7 +268,7 @@ observeEvent(input$delete, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 人员列表
+### 项目列表
 
 ```{r}
 DT::dataTableOutput("mainTbl")
