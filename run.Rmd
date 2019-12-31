@@ -102,7 +102,27 @@ tags$span(" ")
 
 actionButton("delete", "删除")
 
+## focus input element
+jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
+extendShinyjs(text = jscode)
+
+get_exp_num <- function(testNumber, date) {
+  en_sql <- paste("SELECT MAX(experimentNumber) expnum
+            FROM Run
+            WHERE testNumber = '", testNumber, "'
+            AND date = '", date, "'", sep = "")
+  en_rv <- dbGetQuery(mydb, en_sql)
+  if (is.na(en_rv)) {
+    return(1)
+  } else {
+    return(as.integer(en_rv$expnum[1]) + 1)
+  }
+}
+
 observeEvent(input$userKey, {
+  ## 打开时就focus在userKey输入框
+  js$refocus("userKey")
+  
   # 查询用户permission
   if (grepl("^\\d+$", input$userKey)) {
     user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
@@ -149,15 +169,19 @@ observeEvent(input$userKey, {
   for(ele in c(query_id, hide_ary, "submit")) {
     if (rv$permission[["insert"]]) {
       show(ele)
-    } else {
+   } else {
       hide(ele)
     }
   }
   
+  if (rv$permission[["insert"]]) {
+    js$refocus("specimenNumber")
+    updateTextInput(session, "userId", value = input$userKey)
+    updateTextInput(session, "userName", value = userName_lst[[input$userKey]])
+  }
 })
 
 observeEvent(input[[query_id]], {
-  
   if (rv$permission[["view"]]) {
     for (field in update_ary) {
       updateTextInput(session, field, value = rv$table %>%
@@ -195,12 +219,24 @@ observeSample <- function(testNumber, date, experimentNumber) {
   dbGetQuery(mydb, o_sql)
 }
 
+observeEvent({input$testNumber; input$date}, {
+  if (input$testNumber != "") {
+    updateTextInput(session, "experimentNumber", value = get_exp_num(input$testNumber, toString(input$date)))
+  }
+})
+
 observeEvent({input$testNumber; input$date; input$experimentNumber}, {
   os <- observeSample(input$testNumber, toString(input$date), input$experimentNumber)
   if (nrow(os) == 1) {
     updateTextInput(session, "id", value = os$id[1])
     updateTextInput(session, "specimenNumber", value = os$specimenNumber[1])
     updateTextInput(session, "userId", value = os$userId[1])
+  } else {
+    updateTextInput(session, "id", value = NA)
+    updateTextInput(session, "specimenNumber", value = NA)
+    updateTextInput(session, "userId", value = NA)
+    updateTextInput(session, "userName", value = NA)
+    updateTextInput(session, "specimenName", value = NA)
   }
 })
 
