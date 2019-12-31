@@ -4,6 +4,13 @@ output:
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
+    navbar:
+        - { title: "主页", href: "/BEAGLE_LIMS", align: left }
+        - { title: "实验上机", href: "run.Rmd", align: left }
+        - { title: "检测管理", href: "test.Rmd", align: left }
+        - { title: "人员实验", href: "user.Rmd", align: left }
+        - { title: "权限管理", href: "permission.Rmd", align: left }
+        - { title: "仪器管理", href: "instrument.Rmd", align: left }
 runtime: shiny
 ---
 
@@ -98,8 +105,6 @@ actionButton("delete", "删除")
 observeEvent(input$userKey, {
   # 查询用户permission
   if (grepl("^\\d+$", input$userKey)) {
-    rv$user <- tibble(userKey = integer(), permission = character())
-  } else {
     user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
                 FROM `Permission` p
                 LEFT JOIN `User` u on p.userId = u.userKey
@@ -109,6 +114,8 @@ observeEvent(input$userKey, {
                 AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
     rv$user <- dbGetQuery(mydb, user_sql)
+  } else {
+    rv$user <- tibble(userKey = integer(), permission = character())
   }
 
   permissions <- rv$user %>% filter(userKey == input$userKey, isValid == 1) %>%
