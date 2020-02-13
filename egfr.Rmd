@@ -1,6 +1,17 @@
 ---
-title: "贝格尔医学检验"
-output: flexdashboard::flex_dashboard
+title: "贝格尔医学检验实验室"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    navbar:
+        - { title: "主页", href: "/BEAGLE_LIMS", align: left }
+        - { title: "实验上机", href: "run.Rmd", align: left }
+        - { title: "标本管理", href: "specimen.Rmd", align: left }
+        - { title: "检测管理", href: "test.Rmd", align: left }
+        - { title: "人员实验", href: "user.Rmd", align: left }
+        - { title: "权限管理", href: "permission.Rmd", align: left }
+        - { title: "仪器管理", href: "instrument.Rmd", align: left }
 runtime: shiny
 ---
 
@@ -55,7 +66,7 @@ Column {.sidebar data-width=200}
 
 **EGFR基因突变检测试剂盒 QuantStudioDx PCR实验结果Excel数据数据分析**
 
-最后更新日期：`r file.mtime("index.Rmd")`
+最后更新日期：`r file.mtime("egfr.Rmd")`
 
 ```{r}
 selectInput(inputId = "KIT_BRAND", 
@@ -389,13 +400,24 @@ renderPlotly(
 
 ```
 
-To Be Continued {data-orientation=rows}
+使用说明 {data-orientation=rows}
 =====================================     
    
 Row {data-height=600}
 -------------------------------------
 
-### Chart 1
+### 使用说明
+
+**EGFR基因突变检测试剂盒 QuantStudioDx PCR实验结果Excel数据数据分析**
+输入文件为QuantStudio Dx软件EGFR检测结果导出EXCEL文件（XLSX格式）
+
+每个检测Target应该单独命名："L858R", "19DEL", "T790M", "L861Q", "G719X", "INS20", "S768I"
+
+内标基因命名："VIC"
+
+外标基因命名："REF"
+
+（未完待续）
 
 ```{r}
 ```
@@ -403,12 +425,12 @@ Row {data-height=600}
 Row {data-height=400}
 -------------------------------------
    
-### Chart 2
+### 图1
 
 ```{r}
 ```   
     
-### Chart 3
+### 图2
 
 ```{r}
 ```

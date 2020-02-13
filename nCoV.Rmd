@@ -9,6 +9,7 @@ output:
         - { title: "实验上机", href: "run.Rmd", align: left }
         - { title: "检测管理", href: "test.Rmd", align: left }
         - { title: "人员实验", href: "user.Rmd", align: left }
+        - { title: "标本管理", href: "specimen.Rmd", align: left }
         - { title: "权限管理", href: "permission.Rmd", align: left }
         - { title: "仪器管理", href: "instrument.Rmd", align: left }
 runtime: shiny
@@ -22,6 +23,24 @@ library(dplyr)
 library(tibble)
 library(shinyjs)
 library(plotly)
+library(RMySQL)  
+
+# killDbConnections <- function () {
+# 
+#   all_cons <- dbListConnections(MySQL())
+# 
+#   if (length(all_cons) > 0) {
+#     print(all_cons)
+#     for(con in all_cons) {
+#       dbDisconnect(con)
+#     }
+#   
+#     print(paste(length(all_cons), " connections killed."))
+#   }
+# 
+# }
+# 
+# killDbConnections()
 
 # operation id
 UPDATEID = 3
@@ -34,13 +53,13 @@ dbSendQuery(mydb,"SET NAMES utf8")
 
 ```
 
-标本管理
+2019-nCoV检测报告（测试）
 =====================================  
 
 Column {.sidebar data-width=350}
 -----------------------------------------------------------------------
 
-最后更新日期：`r file.mtime("specimen.Rmd")`
+最后更新日期：`r file.mtime("nCoV.Rmd")`
 
 ```{r}
 TABLE = "Specimen"
@@ -73,11 +92,11 @@ textInput("gender", label = "性别")
 
 textInput("age", label = "年龄")
 
-selectInput("specimenType", label = "标本类型", choices = c("鼻咽拭子", "手术组织", "穿刺组织", "全血",
+selectInput("specimenType", label = "标本类型", choices = c("", "鼻咽拭子", "手术组织", "穿刺组织", "全血",
                                     "血浆", "血清", "尿液", "粪便", "分泌物", "呕吐物",
                                     "唾液", "脑脊液", "淋巴液", "房水","其他"))
 
-selectInput("specimenStatus", label = "标本状态", choices = c("符合要求", "溶血", "污染", "损坏",
+selectInput("specimenStatus", label = "标本状态", choices = c("", "符合要求", "溶血", "污染", "损坏",
                                                         "时间过久", "量较少"))
 
 textInput("medicalNumber", label = "病案号")
@@ -146,11 +165,13 @@ observeEvent(input$userKey, {
     hide("delete")
   }
   
-  for(ele in c(query_id, update_ary, "submit")) {
-    if (rv$permission[["insert"]]) {
-      show(ele)
-    } else {
-      hide(ele)
+  if (rv$permission[["insert"]]) {
+    for(ele in c(query_id, update_ary, "submit")) {
+      showElement(ele)
+    }
+  } else {
+    for(ele in c(query_id, update_ary, "submit")) {
+      hideElement(ele)
     }
   }
 
@@ -275,11 +296,13 @@ observeEvent(input$delete, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 项目列表
+### 报告内容
 
-```{r}
-DT::dataTableOutput("mainTbl")
-```
+**姓 名：** `r renderText(input$name)` **性 别：** `r renderText(input$gender)` **年 龄：** `r renderText(input$age)`
+**样本类型：** `r renderText(input$specimenType)` **样本状态：** `r renderText(input$specimenStatus)` **样本唯一标识：** `r renderText(input$specimenNumber)`
+
+`r renderText(rv$permission[["insert"]])`
+
 
 Column {data-width=200}
 -----------------------------------------------------------------------
