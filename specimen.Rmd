@@ -11,6 +11,7 @@ output:
         - { title: "人员实验", href: "user.Rmd", align: left }
         - { title: "权限管理", href: "permission.Rmd", align: left }
         - { title: "仪器管理", href: "instrument.Rmd", align: left }
+        - { title: "nCoV报告", href: "nCoV.Rmd", align: left }
 runtime: shiny
 ---
 

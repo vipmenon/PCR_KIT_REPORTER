@@ -88,9 +88,19 @@ update_ary <- c("specimenNumber", "ORF1ab", "N", "E", "result", "testDate", "rep
 
 tags$span(" ")
 
-downloadButton('report', '生成报告')
+actionButton("delete", "删除")
 
-downloadHandler(filename = function() {
+tags$hr()
+
+# 直接用downloadButton不工作，此处代码参考https://stackoverflow.com/questions/55345498/downloadbutton-width-in-r-flexdashboard/55374600#55374600
+
+uiOutput("downloadUI")
+
+output$downloadUI <- renderUI( {
+  downloadButton('report', '生成报告')
+})
+
+output$report <- downloadHandler(filename = function() {
     rpt <- read_docx("report/nCoV_template1.docx") %>%
     body_replace_all_text("xingming", rv$specimenInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
     body_replace_all_text("xingbie", rv$specimenInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
@@ -113,16 +123,12 @@ downloadHandler(filename = function() {
     body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
     
     print(rpt, target = "report/rpt1.docx")
-    paste('resultset-', Sys.Date(), '.docx', sep='')
+    paste('report-', Sys.Date(), '.docx', sep='')
   },
   content = function(file) {
       file.copy("report/rpt1.docx", file)
     }
 )
-
-tags$span(" ")
-
-actionButton("delete", "删除")
 
 ## focus input element
 jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
@@ -174,15 +180,15 @@ observeEvent(input$userKey, {
   }
   
   if (rv$permission[["insert"]]) {
-    for(ele in c(query_id, update_ary, "submit")) {
+    for(ele in c(query_id, update_ary, "submit", "downloadUI")) {
       showElement(ele)
     }
-    showElement(selector = ".shiny-download-link")
+    # showElement(selector = ".shiny-download-link")
   } else {
-    for(ele in c(query_id, update_ary, "submit")) {
+    for(ele in c(query_id, update_ary, "submit", "downloadUI")) {
       hideElement(ele)
     }
-    hideElement(selector = ".shiny-download-link")
+    # hideElement(selector = ".shiny-download-link")
   }
   
   if (rv$permission[["insert"]]) {
