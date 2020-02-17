@@ -22,22 +22,14 @@ library(dplyr)
 library(tibble)
 library(shinyjs)
 library(plotly)
+source("share.R")
 
-# operation id
-UPDATEID = 3
-INSERTID = 2
-DELETEID = 4
+killDbConnections()
 
 mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
                   password='lims', host='192.168.253.178', port=3306)
 dbSendQuery(mydb,"SET NAMES utf8")
 
-get_select_list <- function(table, key_col, value_col) {
-  sel_tbl <- as_tibble(DBI::dbReadTable(mydb, table))
-  sel_lst <- as.list(sel_tbl %>% pull(value_col))
-  names(sel_lst) <- sel_tbl %>% pull(key_col)
-  return(sel_lst)
-}
 ```
 
 权限管理
@@ -74,11 +66,11 @@ useShinyjs(rmd=TRUE)
 
 numericInput("id", label = "记录编号", value = NA, min = 1)
 
-selectInput("userId", label = "姓名", choices = get_select_list("`User`", "name", "userKey"))
+selectInput("userId", label = "姓名", choices = get_select_list(mydb, "`User`", "name", "userKey"))
 
-selectInput("tableId", label = "管理模块", choices = get_select_list("`Table`", "chinese", "id"))
+selectInput("tableId", label = "管理模块", choices = get_select_list(mydb, "`Table`", "chinese", "id"))
 
-selectInput("operationId", label = "操作类别", choices = get_select_list("`Operation`", "chinese", "id"))
+selectInput("operationId", label = "操作类别", choices = get_select_list(mydb, "`Operation`", "chinese", "id"))
 
 selectInput("isValid", label = "是否有效", choices = list("是" = 1, "否" = 0))
 
@@ -131,16 +123,16 @@ observeEvent(input$userKey, {
   }
 
   if (rv$permission[["delete"]]) {
-    show("delete")
+    showElement("delete")
   } else {
-    hide("delete")
+    hideElement("delete")
   }
   
   for(ele in c(query_id, update_ary, "submit")) {
     if (rv$permission[["insert"]]) {
-      show(ele)
+      showElement(ele)
     } else {
-      hide(ele)
+      hideElement(ele)
     }
   }
   
@@ -207,6 +199,11 @@ observeEvent(input$submit, {
   ## NULL value manipulation
   # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
   # dateCommissioned <- ifelse(toString(input$dateCommissioned) == "", "NULL", toString(input$dateCommissioned))
+  
+  ## missing id
+  if ( is.na(inputs[query_id]) ) {
+    inputs[query_id] <- 0
+  }
   submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
   
   insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE ",
@@ -218,11 +215,11 @@ observeEvent(input$submit, {
   
   if (input[[query_id]] %in% rv$table[[query_id]]) {
     log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  paste("'", inputs[query_id] ,"'", sep = ""),
                   sep = ", ")
   } else {
     log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  'LAST_INSERT_ID()',
                   sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
@@ -283,3 +280,32 @@ verbatimTextOutput("logText")
 plotlyOutput("chartA")
 ```
 
+使用说明 {data-orientation=rows}
+=====================================     
+   
+Row {data-height=600}
+-------------------------------------
+
+### 使用说明
+
+已知问题：
+
+1. 记录编号留空插入新纪录将出错
+
+（未完待续）
+
+```{r}
+```
+
+Row {data-height=400}
+-------------------------------------
+   
+### 图1
+
+```{r}
+```   
+    
+### 图2
+
+```{r}
+```

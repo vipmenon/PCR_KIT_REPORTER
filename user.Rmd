@@ -109,25 +109,25 @@ observeEvent(input$userKey, {
   }
 
   if (rv$permission[["delete"]]) {
-    show("delete")
+    showElement("delete")
   } else {
-    hide("delete")
+    hideElement("delete")
   }
   
   if (rv$permission[["insert"]]) {
     # enable("submit")
-    show("userId")
-    show("name", anim = T)
-    show("department")
-    show("isValid")
-    show("submit")
+    showElement("userId")
+    showElement("name", anim = T)
+    showElement("department")
+    showElement("isValid")
+    showElement("submit")
   } else {
     # disable("submit")
-    hide("userId")
-    hide("name")
-    hide("department")
-    hide("isValid")
-    hide("submit")
+    hideElement("userId")
+    hideElement("name")
+    hideElement("department")
+    hideElement("isValid")
+    hideElement("submit")
   }
   
 })

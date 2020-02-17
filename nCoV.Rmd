@@ -23,34 +23,15 @@ library(dplyr)
 library(tibble)
 library(shinyjs)
 library(plotly)
+library(officer)
 library(RMySQL)  
+source("share.R")
 
-# killDbConnections <- function () {
-# 
-#   all_cons <- dbListConnections(MySQL())
-# 
-#   if (length(all_cons) > 0) {
-#     print(all_cons)
-#     for(con in all_cons) {
-#       dbDisconnect(con)
-#     }
-#   
-#     print(paste(length(all_cons), " connections killed."))
-#   }
-# 
-# }
-# 
-# killDbConnections()
-
-# operation id
-UPDATEID = 3
-INSERTID = 2
-DELETEID = 4
+killDbConnections()
 
 mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
                   password='lims', host='192.168.253.178', port=3306)
 dbSendQuery(mydb,"SET NAMES utf8")
-
 ```
 
 2019-nCoV检测报告（测试）
@@ -62,18 +43,11 @@ Column {.sidebar data-width=350}
 最后更新日期：`r file.mtime("nCoV.Rmd")`
 
 ```{r}
-TABLE = "Specimen"
+TABLE = "nCoV"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
-                     table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
-## 主窗口表格内容
-mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`,
-                       specimenType `标本类型`, specimenStatus `标本状态`,
-                       medicalNumber `病案号`, institution `送检单位`, originalNumber `原始编号`,
-                       doctor `送检医师`, collectDate `采集日期`, receiveDate `接受日期`,
-                       updatetime `更新日期`
-                 FROM `Specimen`"
-rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+                     table = as_tibble(DBI::dbReadTable(mydb, TABLE)),
+                     spe_tbl = as_tibble(DBI::dbReadTable(mydb, "Specimen")))
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -86,42 +60,76 @@ useShinyjs(rmd=TRUE)
 
 textInput("specimenNumber", label = "标本编号")
 
-textInput("name", label = "姓名")
+textInput("reportNumber", label = "报告编号", placeholder = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
 
-textInput("gender", label = "性别")
+selectInput("ORF1ab", label = "ORF1ab", choices = c("", "RdRP基因（+）", "RdRP基因（-）"))
 
-textInput("age", label = "年龄")
+selectInput("N", label = "N", choices = c("", "N基因（+）", "N基因（-）"))
 
-selectInput("specimenType", label = "标本类型", choices = c("", "鼻咽拭子", "手术组织", "穿刺组织", "全血",
-                                    "血浆", "血清", "尿液", "粪便", "分泌物", "呕吐物",
-                                    "唾液", "脑脊液", "淋巴液", "房水","其他"))
+selectInput("E", label = "E", choices = c("", "E基因（+）", "E基因（-）"))
 
-selectInput("specimenStatus", label = "标本状态", choices = c("", "符合要求", "溶血", "污染", "损坏",
-                                                        "时间过久", "量较少"))
+selectInput("result", label = "检测结果", choices = c("", "检出", "未检出", "可能为近源冠状病毒", "可疑结果"))
 
-textInput("medicalNumber", label = "病案号")
+dateInput("testDate", label = "检测日期", value = Sys.Date())
 
-textInput("institution", label = "送检单位")
+dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
-textInput("originalNumber", label = "原始编号")
+userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 
-textInput("doctor", label = "送检医师")
+selectInput("tester", label = "检测员", choices = userNames)
 
-dateInput("collectDate", label = "采集日期", value = NA)
-
-dateInput("receiveDate", label = "接受日期", value = Sys.Date())
+selectInput("checker", label = "审核员", choices = userNames)
 
 actionButton("submit", label = "新增/更新")
 
-query_id <- "specimenNumber"
+query_id <- "reportNumber"
 
-update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "originalNumber", "doctor", "collectDate", "receiveDate")
+update_ary <- c("specimenNumber", "ORF1ab", "N", "E", "result", "testDate", "reportDate", "tester", "checker")
+
+tags$span(" ")
+
+downloadButton('report', '生成报告')
+
+downloadHandler(filename = function() {
+    rpt <- read_docx("report/nCoV_template1.docx") %>%
+    body_replace_all_text("xingming", rv$specimenInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("xingbie", rv$specimenInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("nianling", rv$specimenInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yangbenleixing", rv$specimenInfo$specimenType, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yangbenzhuangtai", rv$specimenInfo$specimenStatus, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("weiyibaioshi", rv$specimenInfo$specimenNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("binganhao", rv$specimenInfo$medicalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("songjiandanwei", rv$specimenInfo$institution, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yuanshibianhao", rv$specimenInfo$originalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yishi", rv$specimenInfo$doctor, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("caijiriqi", rv$specimenInfo$collectDate, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("jieshouriqi", rv$specimenInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("bgbianhao", input$reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("jiancejieguo", input$result, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("rdpr_result", input$ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("n_result", input$N, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("e_result", input$E, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
+    
+    print(rpt, target = "report/rpt1.docx")
+    paste('resultset-', Sys.Date(), '.docx', sep='')
+  },
+  content = function(file) {
+      file.copy("report/rpt1.docx", file)
+    }
+)
 
 tags$span(" ")
 
 actionButton("delete", "删除")
 
+## focus input element
+jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
+extendShinyjs(text = jscode)
+
 observeEvent(input$userKey, {
+  js$refocus("userKey")
   # 查询用户permission
   if (grepl("^\\d+$", input$userKey)) {
     user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
@@ -146,13 +154,13 @@ observeEvent(input$userKey, {
   output$p <- renderText(paste("用户权限：", paste(permissions, collapse = "、")))
 
   if (rv$permission[["view"]] == TRUE) {
-      output$mainTbl <- renderDT(rv$mainTbl, options =
-                                   list(pageLength = 15, autoWidth = TRUE, scrollX = TRUE), rownames= FALSE)
+      # output$mainTbl <- renderDT(rv$mainTbl, options =
+      #                              list(pageLength = 15, autoWidth = TRUE, scrollX = TRUE), rownames= FALSE)
       output$logText <- renderPrint(rv$log_text)
-      output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
-                                              group_by(`标本类型`) %>%
-                                              summarise(Num = length(`标本类型`)),
-                                            x = ~`标本类型`, y = ~`Num`, type = "bar"))
+      output$chartA <- renderPlotly(plot_ly(rv$table %>%
+                                              group_by(`result`) %>%
+                                              summarise(Num = length(`result`)),
+                                            x = ~`result`, y = ~`Num`, type = "bar"))
   } else {
     output$mainTbl <- renderDT(tibble())
     output$logText <- renderPrint("")
@@ -160,47 +168,46 @@ observeEvent(input$userKey, {
   }
 
   if (rv$permission[["delete"]]) {
-    show("delete")
+    showElement("delete")
   } else {
-    hide("delete")
+    hideElement("delete")
   }
   
   if (rv$permission[["insert"]]) {
     for(ele in c(query_id, update_ary, "submit")) {
       showElement(ele)
     }
+    showElement(selector = ".shiny-download-link")
   } else {
     for(ele in c(query_id, update_ary, "submit")) {
       hideElement(ele)
     }
+    hideElement(selector = ".shiny-download-link")
+  }
+  
+  if (rv$permission[["insert"]]) {
+    js$refocus("specimenNumber")
   }
 
 })
 
 observeEvent(input[[query_id]],{
-  
+  # response to query_id changes
   if (rv$permission[["view"]]) {
-    for (field in update_ary) {
-      updateTextInput(session, field, value = rv$table %>%
-                      filter(get(query_id) == input[[query_id]]) %>%
-                      pull(field))
+    if (rv$table %>% filter(get(query_id) == input[[query_id]]) %>% nrow() == 1) {
+      for (field in update_ary) {
+        updateTextInput(session, field, value = rv$table %>%
+                        filter(get(query_id) == input[[query_id]]) %>%
+                        pull(field))
+      }
     }
-  } else {
-    renderText("用户权限不足")
   }
-
 })
 
-get_table_id <- function(table) {
-  # get table id using table name
-  table_sql <- paste("SELECT `id` FROM `Table` WHERE `name` = '", table, "'", sep = "")
-  table_rv <- dbGetQuery(mydb, table_sql)
-  if (nrow(table_rv) == 0) {
-    stop("Table not found!")
-  } else {
-    return(table_rv$id[1])
-  }
-}
+observeEvent(input[["specimenNumber"]], {
+  # query specimen info
+  rv$specimenInfo <- rv$spe_tbl %>% filter(specimenNumber == input[["specimenNumber"]])
+})
 
 # 日志记录查询
 
@@ -236,8 +243,8 @@ observeEvent(input$submit, {
     }
   )
   # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
-  inputs$collectDate <- ifelse(toString(input$collectDate) == "", "NULL", toString(input$collectDate))
-  inputs$receiveDate <- ifelse(toString(input$receiveDate) == "", "NULL", toString(input$receiveDate))
+  inputs$testDate <- ifelse(toString(input$testDate) == "", "NULL", toString(input$testDate))
+  inputs$reportDate <- ifelse(toString(input$reportDate) == "", "NULL", toString(input$reportDate))
   
   submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
   
@@ -250,11 +257,11 @@ observeEvent(input$submit, {
   # 添加日志
   
   if (input[[query_id]] %in% rv$table[[query_id]]) {
-    log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
+    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), UPDATEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
   } else {
-    log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
+    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), INSERTID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
   }
@@ -264,7 +271,7 @@ observeEvent(input$submit, {
 
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+  # rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
   rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
 })
 
@@ -276,7 +283,7 @@ observeEvent(input$delete, {
 
   # 添加日志
 
-  log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
+  log_values <- paste(input$userKey, get_table_id(mydb, TABLE), DELETEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
 
@@ -286,7 +293,7 @@ observeEvent(input$delete, {
   
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+  # rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
   rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
 })
 
@@ -298,10 +305,45 @@ Column {data-width=450}
 
 ### 报告内容
 
-**姓 名：** `r renderText(input$name)` **性 别：** `r renderText(input$gender)` **年 龄：** `r renderText(input$age)`
-**样本类型：** `r renderText(input$specimenType)` **样本状态：** `r renderText(input$specimenStatus)` **样本唯一标识：** `r renderText(input$specimenNumber)`
+**姓 名：** `r renderText(rv$specimenInfo$name)` **性 别：** `r renderText(rv$specimenInfo$gender)` **年 龄：** `r renderText(rv$specimenInfo$age)`
 
-`r renderText(rv$permission[["insert"]])`
+**样本类型：** `r renderText(rv$specimenInfo$specimenType)` **样本状态：** `r renderText(rv$specimenInfo$specimenStatus)` **样本唯一标识：** `r renderText(rv$specimenInfo$specimenNumber)`
+
+**病案号：** `r renderText(rv$specimenInfo$medicalNumber)` **送检单位：** `r renderText(rv$specimenInfo$institution)` **原始样本编号：** `r renderText(rv$specimenInfo$originalNumber)`
+
+**送检医师：** `r renderText(rv$specimenInfo$doctor)` **采集日期：** `r renderText(rv$specimenInfo$collectDate)` **接受日期：** `r renderText(rv$specimenInfo$receiveDate)`
+
+**检测项目**：新型冠状病毒（2019-nCoV）核酸检测
+
+**检测方法**：PCR-荧光探针法
+
+**检测仪器**：QuantStudio Dx
+
+**检测内容**：新型冠状病毒（2019-nCoV）的RdRP 基因（位于ORF1ab 读码框）、E 基因及N基因核酸序列。
+
+**检测结果**：`r renderText(input$result)`
+
+**检测靶标：**
+
+- **ORF1ab：**`r renderText(input$ORF1ab)`
+
+- **N：**`r renderText(input$N)`
+
+- **E：**`r renderText(input$E)`
+
+**备注：**
+
+1.	试剂盒最低检出限：1×103 copies/mL。
+
+2.	报告结果“未检出”可能的原因包括送检样本无病毒核酸序列，或病毒核酸含量未达到最低检出限，或在样本采集、转运、处理等环节的不合理。
+
+3.	本报告结果仅对送检样本负责，检测结果仅供临床医生参考，不得作为临床诊治的唯一依据，对患者的临床管理应结合其症状/体征、病史、其他实验室检查及治疗反应等情况综合考虑。
+
+**检测员：**`r renderText(names(userNames[userNames == input$tester]))`	**审核员：**`r renderText(names(userNames[userNames == input$checker]))`
+
+**检测日期：**`r renderText(input$testDate)`	**报告时间：**`r renderText(input$reportDate)`
+
+**检测实验室：**常州贝格尔医学检验实验室	**联系电话：**0519 8998 8850
 
 
 Column {data-width=200}

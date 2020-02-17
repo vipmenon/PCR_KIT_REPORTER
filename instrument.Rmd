@@ -115,29 +115,29 @@ observeEvent(input$userKey, {
   }
 
   if (rv$permission[["delete"]]) {
-    show("delete")
+    showElement("delete")
   } else {
-    hide("delete")
+    hideElement("delete")
   }
   
   if (rv$permission[["insert"]]) {
     # enable("submit")
-    show("instrumentId")
-    show("name", anim = T)
-    show("instrumentModel")
-    show("serialNumber")
-    show("dateCommissioned")
-    show("dateDecommissioned")
-    show("submit")
+    showElement("instrumentId")
+    showElement("name", anim = T)
+    showElement("instrumentModel")
+    showElement("serialNumber")
+    showElement("dateCommissioned")
+    showElement("dateDecommissioned")
+    showElement("submit")
   } else {
     # disable("submit")
-    hide("instrumentId")
-    hide("name")
-    hide("instrumentModel")
-    hide("serialNumber")
-    hide("dateCommissioned")
-    hide("dateDecommissioned")
-    hide("submit")
+    hideElement("instrumentId")
+    hideElement("name")
+    hideElement("instrumentModel")
+    hideElement("serialNumber")
+    hideElement("dateCommissioned")
+    hideElement("dateDecommissioned")
+    hideElement("submit")
   }
   
 })

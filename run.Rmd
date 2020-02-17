@@ -161,16 +161,16 @@ observeEvent(input$userKey, {
   }
 
   if (rv$permission[["delete"]]) {
-    show("delete")
+    showElement("delete")
   } else {
-    hide("delete")
+    hideElement("delete")
   }
   
   for(ele in c(query_id, hide_ary, "submit")) {
     if (rv$permission[["insert"]]) {
-      show(ele)
+      showElement(ele)
    } else {
-      hide(ele)
+      hideElement(ele)
     }
   }
   
@@ -289,8 +289,8 @@ observeEvent(input$submit, {
   inputs$date <- ifelse(toString(input$date) == "", "NULL", toString(input$date))
   
   ## missing id
-  if ( is.na(inputs$id) ) {
-    inputs$id <- 0
+  if ( is.na(inputs[query_id]) ) {
+    inputs[query_id] <- 0
   }
   submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
   
@@ -307,7 +307,7 @@ observeEvent(input$submit, {
                   sep = ", ")
   } else {
     log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
+                  'LAST_INSERT_ID()',
                   sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")

@@ -122,16 +122,16 @@ observeEvent(input$userKey, {
   }
 
   if (rv$permission[["delete"]]) {
-    show("delete")
+    showElement("delete")
   } else {
-    hide("delete")
+    hideElement("delete")
   }
   
   for(ele in c(query_id, update_ary, "submit")) {
     if (rv$permission[["insert"]]) {
-      show(ele)
+      showElement(ele)
     } else {
-      hide(ele)
+      hideElement(ele)
     }
   }
 
