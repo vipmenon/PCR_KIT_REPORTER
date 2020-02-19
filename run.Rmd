@@ -22,6 +22,7 @@ library(dplyr)
 library(tibble)
 library(shinyjs)
 library(plotly)
+source("share.R")
 
 # operation id
 UPDATEID = 3
@@ -31,13 +32,6 @@ DELETEID = 4
 mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
                   password='lims', host='192.168.253.178', port=3306)
 dbSendQuery(mydb,"SET NAMES utf8")
-
-get_select_list <- function(table, key_col, value_col) {
-  sel_tbl <- as_tibble(DBI::dbReadTable(mydb, table))
-  sel_lst <- as.list(sel_tbl %>% pull(value_col))
-  names(sel_lst) <- sel_tbl %>% pull(key_col)
-  return(sel_lst)
-}
 ```
 
 实验上机
@@ -74,7 +68,7 @@ useShinyjs(rmd=TRUE)
 
 numericInput("id", label = "记录编号", value = NA, min = 1)
 
-selectInput("testNumber", label = "检测项目", choices = get_select_list("`Test`", "title", "testNumber"))
+selectInput("testNumber", label = "检测项目", choices = get_select_list(mydb, "`Test`", "title", "testNumber"))
 
 dateInput("date", label = "实验日期", value = Sys.Date())
 
@@ -84,19 +78,18 @@ textInput("specimenNumber", label = "标本号")
 
 textInput("specimenName", label = "标本姓名")
 
-passwordInput("userId", label = "实验员号")
-
-textInput("userName", label = "实验员姓名")
+selectInput("userId", label = "实验员", choices = get_select_list(mydb, "`User`", "name", "userKey"))
 
 actionButton("submit", label = "新增/更新")
 
 query_id <- "id" ## primary id
 
 update_ary <- c("testNumber", "date", "experimentNumber", "specimenNumber", "userId")
-hide_ary <- c("testNumber", "date", "experimentNumber", "specimenNumber", "userId", "specimenName", "userName")
 
-specimenName_lst <- get_select_list("`Specimen`", "specimenNumber", "name")
-userName_lst <- get_select_list("`User`", "userKey", "name")
+hide_ary <- c("testNumber", "date", "experimentNumber", "specimenNumber", "userId", "specimenName")
+
+specimenName_lst <- get_select_list(mydb, "`Specimen`", "specimenNumber", "name")
+userName_lst <- get_select_list(mydb, "`User`", "userKey", "name")
 
 tags$span(" ")
 
@@ -177,28 +170,19 @@ observeEvent(input$userKey, {
   if (rv$permission[["insert"]]) {
     js$refocus("specimenNumber")
     updateTextInput(session, "userId", value = input$userKey)
-    updateTextInput(session, "userName", value = userName_lst[[input$userKey]])
   }
 })
 
 observeEvent(input[[query_id]], {
+  # 输入记录编号时实时更新记录内容
   if (rv$permission[["view"]]) {
-    for (field in update_ary) {
-      updateTextInput(session, field, value = rv$table %>%
-                      filter(get(query_id) == input[[query_id]]) %>%
-                      pull(field))
+    if (rv$table %>% filter(get(query_id) == input[[query_id]]) %>% nrow() == 1) {
+      for (field in update_ary) {
+        updateTextInput(session, field, value = rv$table %>%
+                        filter(get(query_id) == input[[query_id]]) %>%
+                        pull(field))
+      }
     }
-  } else {
-    renderText("用户权限不足")
-  }
-
-})
-
-observeEvent(input$userId, {
-  if (input$userId %in% names(userName_lst)) {
-    updateTextInput(session, "userName", value = userName_lst[[input$userId]])
-  } else {
-    updateTextInput(session, "userName", value = "")
   }
 })
 
@@ -226,30 +210,14 @@ observeEvent({input$testNumber; input$date}, {
 })
 
 observeEvent({input$testNumber; input$date; input$experimentNumber}, {
+  # 根据实验号、日期、检测项目反查记录号、实验员、标本号
   os <- observeSample(input$testNumber, toString(input$date), input$experimentNumber)
   if (nrow(os) == 1) {
     updateTextInput(session, "id", value = os$id[1])
     updateTextInput(session, "specimenNumber", value = os$specimenNumber[1])
-    updateTextInput(session, "userId", value = os$userId[1])
-  } else {
-    updateTextInput(session, "id", value = NA)
-    updateTextInput(session, "specimenNumber", value = NA)
-    updateTextInput(session, "userId", value = NA)
-    updateTextInput(session, "userName", value = NA)
-    updateTextInput(session, "specimenName", value = NA)
+    updateSelectInput(session, "userId", selected = os$userId[1])
   }
 })
-
-get_table_id <- function(table) {
-  # get table id using table name
-  table_sql <- paste("SELECT `id` FROM `Table` WHERE `name` = '", table, "'", sep = "")
-  table_rv <- dbGetQuery(mydb, table_sql)
-  if (nrow(table_rv) == 0) {
-    stop("Table not found!")
-  } else {
-    return(table_rv$id[1])
-  }
-}
 
 # 日志记录查询
 
@@ -302,11 +270,11 @@ observeEvent(input$submit, {
   # 添加日志
   
   if (input[[query_id]] %in% rv$table[[query_id]]) {
-    log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
+    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), UPDATEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
   } else {
-    log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
+    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), INSERTID,
                   'LAST_INSERT_ID()',
                   sep = ", ")
   }
@@ -327,7 +295,7 @@ observeEvent(input$delete, {
   
   # 添加日志
   
-  log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
+  log_values <- paste(input$userKey, get_table_id(mydb, TABLE), DELETEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
 
