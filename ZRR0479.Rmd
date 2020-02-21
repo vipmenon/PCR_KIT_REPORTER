@@ -1,0 +1,234 @@
+---
+title: "贝格尔医学检验实验室"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    navbar:
+        - { title: "主页", href: "/BEAGLE_LIMS", align: left }
+        - { title: "实验上机", href: "run.Rmd", align: left }
+        - { title: "标本管理", href: "specimen.Rmd", align: left }
+        - { title: "检测管理", href: "test.Rmd", align: left }
+        - { title: "人员实验", href: "user.Rmd", align: left }
+        - { title: "权限管理", href: "permission.Rmd", align: left }
+        - { title: "仪器管理", href: "instrument.Rmd", align: left }
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shinyMatrix)
+library(dplyr)
+library(DBI)
+source("share.R")
+
+mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
+                  password='lims', host='192.168.253.178', port=3306)
+dbSendQuery(mydb,"SET NAMES utf8")
+
+addResourcePath("www", "www")
+```
+
+之江生物Z-RR-0479结果分析（测试）
+=====================================  
+
+Column {.sidebar data-width=1000}
+-----------------------------------------------------------------------
+
+**上海之江生物2019-nCoV检测试剂盒 QuantStudioDx PCR实验结果Excel数据数据分析**
+
+[使用说明书下载](www/Z-RR-0479-02_User_manual.pdf)
+
+最后更新日期：`r file.mtime("ZRR0479.Rmd")`
+
+```{r}
+
+rv <- reactiveValues(specimenMatrix = matrix(),
+                     speTbl = as_tibble(DBI::dbReadTable(mydb, 'Specimen')),
+                     runTbl = as_tibble(DBI::dbReadTable(mydb, 'Run')))
+
+tags$link(rel = 'stylesheet', type = 'text/css', href = 'www/style.css')
+
+textInput("reportNumber", label = "报告起始编号（按Panel从上到下、从左到右的样本结果顺序依次编号）",
+          value = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
+
+uiOutput("ui")
+
+output$ui <- renderUI( {
+  matrixInput(
+        inputId = "layout",
+        label = "样本排列记录表（每孔对应位置填写已登记的实验号）",
+        value = matrix(nrow = 8, ncol = 12, dimnames = list(LETTERS[1:8], 1:12)),
+        class = "character",
+        cols = list(
+          names = TRUE
+        ),
+        rows = list(
+          names = TRUE
+        ),
+        copy = TRUE,
+        paste = TRUE
+  )
+})
+
+dateInput("expDate", label = "实验日期", value = Sys.Date())
+
+fileInput("qdx_xlsx", label = "选择QDx PCR导出Excel文件",
+          buttonLabel = "打开",
+          placeholder = ".xlsx file", accept = c(".xlsx"))
+
+dateInput("testDate", label = "检测日期", value = Sys.Date())
+
+dateInput("reportDate", label = "报告日期", value = Sys.Date())
+
+userNames <- get_select_list(mydb, "`User`", "name", "userKey")
+
+selectInput("tester", label = "检测员", choices = userNames)
+
+selectInput("checker", label = "审核员", choices = userNames)
+
+tags$hr()
+
+# 直接用downloadButton不工作，此处代码参考https://stackoverflow.com/questions/55345498/downloadbutton-width-in-r-flexdashboard/55374600#55374600
+
+uiOutput("downloadUI")
+
+output$downloadUI <- renderUI( {
+  downloadButton('report', '生成报告')
+})
+
+output$report <- downloadHandler(filename = function() {
+    rpt <- read_docx("report/nCoV_template1.docx") %>%
+    body_replace_all_text("xingming", rv$specimenInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("xingbie", rv$specimenInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("nianling", rv$specimenInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yangbenleixing", rv$specimenInfo$specimenType, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yangbenzhuangtai", rv$specimenInfo$specimenStatus, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("weiyibaioshi", rv$specimenInfo$specimenNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("binganhao", rv$specimenInfo$medicalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("songjiandanwei", rv$specimenInfo$institution, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yuanshibianhao", rv$specimenInfo$originalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("yishi", rv$specimenInfo$doctor, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("caijiriqi", rv$specimenInfo$collectDate, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("jieshouriqi", rv$specimenInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("bgbianhao", input$reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("jiancejieguo", input$result, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("rdpr_result", input$ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("n_result", input$N, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("e_result", input$E, only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
+    body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
+
+    print(rpt, target = "report/rpt1.docx")
+    paste('report-', Sys.Date(), '.docx', sep='')
+  },
+  content = function(file) {
+      file.copy("report/rpt1.docx", file)
+    }
+)
+
+# 根据输入的实验号排版信息，在右侧显示对应样本号
+
+expNum2speNum <- function(expNum) {
+  if (expNum == '') {
+    return(NA)
+  }
+  if (tolower(expNum) == 'p') return('p')
+  if (tolower(expNum) == 'n') return('n')
+  filTbl <- rv$runTbl %>% filter(experimentNumber == as.integer(expNum), date == toString(input$expDate), testNumber == 'P04')
+  if (nrow(filTbl) == 1) {
+    return(filTbl$specimenNumber)
+  } else if (nrow(filTbl) > 1) {
+    return("重复")
+  } else {
+    return("未知")
+  }
+}
+
+layout2specimen <- function(mat) {
+  spe <- mat
+  print(mat)
+  for (i in 1:nrow(mat)) {
+    for (j in 1:ncol(mat)) {
+      spe[i,j] <- expNum2speNum(mat[i,j])
+      # spe[i,j] <- as.integer(mat[i,j]) + 1
+    }
+  }
+  return(spe)
+}
+
+observeEvent({input$expDate; input$layout}, {
+  rv$specimenMatrix <- layout2specimen(input$layout)
+})
+
+# 读取Excel结果，及扩增数据
+
+tbl_res <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble(`Well` = integer(), `Well Position` = character(),
+           Omit = character(), `Sample Name`=character(),
+           `Target Name` = character(),	Task = character(),
+           Reporter = character(),	Quencher = character(),	CT = numeric())
+  } else {
+    read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 40)
+  }
+})
+
+tbl_amp <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble(Well = integer(), `Delta Rn` = numeric(), `Cycle` = integer())
+  } else {
+    read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 40,
+               col_types = c("numeric", "text", "text", "skip", "numeric"))
+  }
+})
+
+drn_ylim <- reactive({
+  if (nrow(tbl_amp()) == 0) {
+    1
+  } else {
+    max(tbl_amp()$`Delta Rn`, na.rm = T) + 0.1
+  }
+})
+
+tbl_amp_smp <- reactive({
+  if (is.null(input$qdx_xlsx)) {
+    tibble(Cycle = integer(), `Delta Rn` = numeric(), `Sample Name` = integer())
+  } else {
+    tbl_amp() %>% left_join(tbl_res_target() %>% select(`Well`, `Sample Name`)) %>%
+      mutate(Cycle = as.integer(Cycle))
+  }
+})
+
+tbl_amp_pn <- reactive({
+  if (nrow(tbl_amp_smp()) == 0) {
+    tibble(Cycle = integer(), Sample = character(), `Target Name` = character(),
+           `p` = numeric(), `n` = numeric())
+  } else {
+    tbl_amp_smp() %>%
+      filter(!is.na(`Sample Name`), `Target Name` != input$INT_CTRL) %>%
+      rowid_to_column() %>%
+      spread(`Sample Name`, `Delta Rn`)
+      # select(-1) %>%
+  }
+})
+
+
+
+```
+
+Column {data-width=200}
+-----------------------------------------------------------------------
+
+### 样本编号确认（"未知"标识改实验号未找到对应样本编号，"重复"表示同一天内该项目有多个重复实验号）
+
+```{r}
+renderTable(rv$specimenMatrix)
+```
+
+### Chart C
+
+```{r}
+renderTable(input$layout)
+```
+

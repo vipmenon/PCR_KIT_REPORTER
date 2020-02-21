@@ -54,7 +54,8 @@ mainTbl_sql <- "SELECT r.id `记录号`, t.title `检测项目`, date `实验日
                  FROM `Run` r
                  LEFT JOIN `Test` t on t.testNumber = r.testNumber
                  LEFT JOIN `Specimen` s on s.specimenNumber = r.specimenNumber
-                 LEFT JOIN `User` u on u.userKey = r.userId"
+                 LEFT JOIN `User` u on u.userKey = r.userId
+                ORDER BY `记录号` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
@@ -285,27 +286,36 @@ observeEvent(input$submit, {
   rv$log_text <- get_log(TABLE)
   rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
   rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  
+  # 如果记录编号为空，则更新自动生成的记录编号，方便接着更新/删除这条记录
+  if (inputs[query_id] == 0) {
+    updateTextInput(session, query_id, value = rv$table %>%
+                        slice(n()) %>%
+                        pull(query_id))
+  }
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
-  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
-  rv$sql_exe <- dbExecute(mydb, delete_sql)
+  if (input[[query_id]] %in% rv$table[[query_id]]) {
+    delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
+    rv$sql_exe <- dbExecute(mydb, delete_sql)
+    
+    # 添加日志
+    
+    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), DELETEID,
+                    paste("'", input[[query_id]] ,"'", sep = ""),
+                    sep = ", ")
   
-  # 添加日志
-  
-  log_values <- paste(input$userKey, get_table_id(mydb, TABLE), DELETEID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
-                  sep = ", ")
-
-  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
-  dbExecute(mydb, log_ins_sql)
-  
-  ## 刷新主表格内容
-  rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+    log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
+    dbExecute(mydb, log_ins_sql)
+    
+    ## 刷新主表格内容
+    rv$log_text <- get_log(TABLE)
+    rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+    rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  }
 })
 
 ```

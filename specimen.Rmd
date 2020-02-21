@@ -58,7 +58,8 @@ mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性
                        medicalNumber `病案号`, institution `送检单位`, originalNumber `原始编号`,
                        doctor `送检医师`, collectDate `采集日期`, receiveDate `接受日期`,
                        updatetime `更新日期`
-                 FROM `Specimen`"
+                 FROM `Specimen`
+                 ORDER BY `标本编号` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
@@ -93,7 +94,7 @@ textInput("originalNumber", label = "原始编号")
 
 textInput("doctor", label = "送检医师")
 
-dateInput("collectDate", label = "采集日期", value = NA)
+dateInput("collectDate", label = "采集日期", value = Sys.Date())
 
 dateInput("receiveDate", label = "接受日期", value = Sys.Date())
 
