@@ -24,6 +24,8 @@ library(shinyjs)
 library(plotly)
 source("share.R")
 
+killDbConnections()
+
 # operation id
 UPDATEID = 3
 INSERTID = 2
@@ -95,6 +97,10 @@ userName_lst <- get_select_list(mydb, "`User`", "userKey", "name")
 tags$span(" ")
 
 actionButton("delete", "删除")
+
+tags$span(" ")
+
+actionButton("clear", "清空")
 
 ## focus input element
 jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
@@ -318,6 +324,18 @@ observeEvent(input$delete, {
   }
 })
 
+observeEvent(input$clear, {
+  if ( !is.na(as.integer(input$experimentNumber)) ) {
+    updateTextInput(session, "experimentNumber", value = as.integer(input$experimentNumber) + 1)
+  }
+  updateTextInput(session, "specimenNumber", value = "")
+  updateTextInput(session, "specimenName", value = "")
+  updateTextInput(session, "id", value = NA)
+
+  ## 清空完focus在样本编号输入框
+  js$refocus("specimenNumber")
+  
+})
 ```
 
 

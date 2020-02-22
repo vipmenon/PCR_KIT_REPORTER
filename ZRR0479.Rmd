@@ -20,7 +20,11 @@ library(flexdashboard)
 library(shinyMatrix)
 library(dplyr)
 library(DBI)
+library(readxl)
+library(tidyr)
 source("share.R")
+
+killDbConnections()
 
 mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
                   password='lims', host='192.168.253.178', port=3306)
@@ -35,10 +39,7 @@ addResourcePath("www", "www")
 Column {.sidebar data-width=1000}
 -----------------------------------------------------------------------
 
-**上海之江生物2019-nCoV检测试剂盒 QuantStudioDx PCR实验结果Excel数据数据分析**
-
-[使用说明书下载](www/Z-RR-0479-02_User_manual.pdf)
-
+**上海之江生物2019-nCoV检测试剂盒 QuantStudioDx PCR实验结果Excel数据数据分析** [使用说明书下载](www/Z-RR-0479-02_User_manual.pdf)
 最后更新日期：`r file.mtime("ZRR0479.Rmd")`
 
 ```{r}
@@ -87,6 +88,8 @@ selectInput("tester", label = "检测员", choices = userNames)
 
 selectInput("checker", label = "审核员", choices = userNames)
 
+actionButton("submit", "生成报告")
+
 tags$hr()
 
 # 直接用downloadButton不工作，此处代码参考https://stackoverflow.com/questions/55345498/downloadbutton-width-in-r-flexdashboard/55374600#55374600
@@ -94,7 +97,7 @@ tags$hr()
 uiOutput("downloadUI")
 
 output$downloadUI <- renderUI( {
-  downloadButton('report', '生成报告')
+  downloadButton('report', '下载报告')
 })
 
 output$report <- downloadHandler(filename = function() {
@@ -133,8 +136,8 @@ expNum2speNum <- function(expNum) {
   if (expNum == '') {
     return(NA)
   }
-  if (tolower(expNum) == 'p') return('p')
-  if (tolower(expNum) == 'n') return('n')
+  if (grepl("^p", tolower(expNum)) ) return('pos_ctrl')
+  if (grepl("^n", tolower(expNum)) ) return('neg_ctrl')
   filTbl <- rv$runTbl %>% filter(experimentNumber == as.integer(expNum), date == toString(input$expDate), testNumber == 'P04')
   if (nrow(filTbl) == 1) {
     return(filTbl$specimenNumber)
@@ -147,11 +150,9 @@ expNum2speNum <- function(expNum) {
 
 layout2specimen <- function(mat) {
   spe <- mat
-  print(mat)
   for (i in 1:nrow(mat)) {
     for (j in 1:ncol(mat)) {
       spe[i,j] <- expNum2speNum(mat[i,j])
-      # spe[i,j] <- as.integer(mat[i,j]) + 1
     }
   }
   return(spe)
@@ -171,6 +172,8 @@ tbl_res <- reactive({
            Reporter = character(),	Quencher = character(),	CT = numeric())
   } else {
     read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 40)
+    # 调试数据
+    # tbl_res <- read_excel("/var/share/QuantStudioDx/2019-nCoV/2020-2-21/2020-02-21_2019-nCoV_data.xlsx", sheet = "Results", skip = 40)
   }
 })
 
@@ -180,6 +183,8 @@ tbl_amp <- reactive({
   } else {
     read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 40,
                col_types = c("numeric", "text", "text", "skip", "numeric"))
+    # 调试数据
+    # tbl_amp <- read_excel("/var/share/QuantStudioDx/2019-nCoV/2020-2-21/2020-02-21_2019-nCoV_data.xlsx", sheet = "Amplification Data", skip = 40)
   }
 })
 
@@ -189,15 +194,19 @@ drn_ylim <- reactive({
   } else {
     max(tbl_amp()$`Delta Rn`, na.rm = T) + 0.1
   }
+  # 调试数据
+  # drn_ylim <- max(tbl_amp$`Delta Rn`, na.rm = T) + 0.1
 })
 
 tbl_amp_smp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Cycle = integer(), `Delta Rn` = numeric(), `Sample Name` = integer())
   } else {
-    tbl_amp() %>% left_join(tbl_res_target() %>% select(`Well`, `Sample Name`)) %>%
-      mutate(Cycle = as.integer(Cycle))
+    tbl_amp() %>% left_join(tbl_res() %>% select(`Well`, `Sample Name`) %>% distinct()) %>%
+      mutate(Cycle = as.integer(Cycle)) %>% filter(!is.na(`Sample Name`))
   }
+  # 调试数据
+  # tbl_amp_smp <- tbl_amp %>% left_join(tbl_res %>% select(`Well`, `Sample Name`) %>% distinct()) %>% mutate(Cycle = as.integer(Cycle)) %>% filter(!is.na(`Sample Name`))
 })
 
 tbl_amp_pn <- reactive({
@@ -206,14 +215,25 @@ tbl_amp_pn <- reactive({
            `p` = numeric(), `n` = numeric())
   } else {
     tbl_amp_smp() %>%
-      filter(!is.na(`Sample Name`), `Target Name` != input$INT_CTRL) %>%
-      rowid_to_column() %>%
+      filter(grepl("p|n", tolower(`Sample Name`))) %>%
+      # rowid_to_column() %>%
       spread(`Sample Name`, `Delta Rn`)
       # select(-1) %>%
   }
+  # 调试数据
+  # tbl_amp_pn <- tbl_amp_smp %>% filter(grepl("p|n", tolower(`Sample Name`))) %>% spread(`Sample Name`, `Delta Rn`)
 })
 
-
+observeEvent(input$submit, {
+  
+  withProgress(message = 'Calculation in progress',
+               detail = 'This may take a while...', value = 0, {
+                 for (variable in vector) {
+                   
+                   incProgress(1/length(rs), name)
+                 }
+               })
+})
 
 ```
 

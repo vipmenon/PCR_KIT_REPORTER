@@ -73,7 +73,8 @@ selectInput(inputId = "KIT_BRAND",
             label = "检测试剂盒厂家",
             choices = list("宏微特斯" = "HW_EGFR",
                            "鑫诺美迪" = "XNMD_EGFR",
-                           "友芝友" = "YZY_EGFR"))
+                           "友芝友" = "YZY_EGFR"),
+            selected = "YZY_EGFR")
 
 textInput("TARGET_REF", label = "外控Target Name", value = "REF")
 
