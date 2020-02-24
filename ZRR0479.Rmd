@@ -20,6 +20,7 @@ library(flexdashboard)
 library(shinyMatrix)
 library(dplyr)
 library(DBI)
+library(plotly)
 library(readxl)
 library(tidyr)
 source("share.R")
@@ -31,6 +32,9 @@ mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
 dbSendQuery(mydb,"SET NAMES utf8")
 
 addResourcePath("www", "www")
+
+POS_CTRL = 'p'
+NEG_CTRL = 'n'
 ```
 
 之江生物Z-RR-0479结果分析（测试）
@@ -46,12 +50,13 @@ Column {.sidebar data-width=1000}
 
 rv <- reactiveValues(specimenMatrix = matrix(),
                      speTbl = as_tibble(DBI::dbReadTable(mydb, 'Specimen')),
-                     runTbl = as_tibble(DBI::dbReadTable(mydb, 'Run')))
+                     runTbl = as_tibble(DBI::dbReadTable(mydb, 'Run')),
+                     reportStatus = "")
 
 tags$link(rel = 'stylesheet', type = 'text/css', href = 'www/style.css')
 
-textInput("reportNumber", label = "报告起始编号（按Panel从上到下、从左到右的样本结果顺序依次编号）",
-          value = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
+# textInput("reportNumber", label = "报告起始编号（按Panel从上到下、从左到右的样本结果顺序依次编号）",
+#           value = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
 
 uiOutput("ui")
 
@@ -89,6 +94,8 @@ selectInput("tester", label = "检测员", choices = userNames)
 selectInput("checker", label = "审核员", choices = userNames)
 
 actionButton("submit", "生成报告")
+
+renderText(rv$reportStatus)
 
 tags$hr()
 
@@ -136,8 +143,8 @@ expNum2speNum <- function(expNum) {
   if (expNum == '') {
     return(NA)
   }
-  if (grepl("^p", tolower(expNum)) ) return('pos_ctrl')
-  if (grepl("^n", tolower(expNum)) ) return('neg_ctrl')
+  if (grepl("^p", tolower(expNum)) ) return(POS_CTRL)
+  if (grepl("^n", tolower(expNum)) ) return(NEG_CTRL)
   filTbl <- rv$runTbl %>% filter(experimentNumber == as.integer(expNum), date == toString(input$expDate), testNumber == 'P04')
   if (nrow(filTbl) == 1) {
     return(filTbl$specimenNumber)
@@ -211,7 +218,8 @@ tbl_amp_smp <- reactive({
 
 tbl_amp_pn <- reactive({
   if (nrow(tbl_amp_smp()) == 0) {
-    tibble(Cycle = integer(), Sample = character(), `Target Name` = character(),
+    tibble(`Well` = integer(), Cycle = integer(),
+           Sample = character(), `Target Name` = character(),
            `p` = numeric(), `n` = numeric())
   } else {
     tbl_amp_smp() %>%
@@ -224,15 +232,57 @@ tbl_amp_pn <- reactive({
   # tbl_amp_pn <- tbl_amp_smp %>% filter(grepl("p|n", tolower(`Sample Name`))) %>% spread(`Sample Name`, `Delta Rn`)
 })
 
-observeEvent(input$submit, {
+CT2Res <- function(CT, CT_CUTOFF = 43) {
+  if (is.na(CT)) return("-")
+  if (CT <= CT_CUTOFF) {
+    return("+")
+  } else {
+    return("-")
+  }
+}
+
+Result <- function(ORF1ab, N, E, D) {
+  # 根据ABCD通道CT值判定结果
+  if (all(ORF1ab == "+", N == "+", E == "+") ) return("检出")
+  if (all(ORF1ab == "+", N == "+", E == "-") ) return("检出")
+  if (all(ORF1ab == "+", N == "-", E == "+") ) return("检出")
+  if (all(ORF1ab == "+", N == "-", E == "-") ) return("可疑结果")
+  if (all(ORF1ab == "-", N == "+", E == "-") ) return("可能为近源冠状病毒")
+  if (all(ORF1ab == "-", N == "-", E == "+") ) return("可能为近源冠状病毒")
+  if (all(ORF1ab == "-", N == "-", E == "-") ) return("未检出")
   
-  withProgress(message = 'Calculation in progress',
-               detail = 'This may take a while...', value = 0, {
-                 for (variable in vector) {
-                   
-                   incProgress(1/length(rs), name)
-                 }
+}
+
+observeEvent(input$submit, {
+  rv$reportStatus <- "开始分析数据"
+  samples <- unique(tbl_res()$`Sample Name`)
+  samples <- samples[!grepl("p|n", samples, ignore.case = TRUE)]
+  withProgress(message = '开始分析数据...',
+               detail = '依次分析所有样本结果...', value = 0, {
+                for (sample in samples) {
+                  specimenNumber <- expNum2speNum(sample)
+                  ORF1ab <- tbl_res() %>%
+                    filter(`Sample Name` == sample, `Target Name` == 'A') %>%
+                    pull(`CT`) %>% CT2Res()
+                  N <- tbl_res() %>%
+                    filter(`Sample Name` == sample, `Target Name` == 'B') %>%
+                    pull(`CT`) %>% CT2Res()
+                  E <- tbl_res() %>%
+                    filter(`Sample Name` == sample, `Target Name` == 'C') %>%
+                    pull(`CT`) %>% CT2Res()
+                  D <- tbl_res() %>%
+                    filter(`Sample Name` == sample, `Target Name` == 'D') %>%
+                    pull(`CT`) %>% CT2Res()
+                  
+                  result <- Result(ORF1ab, N, E, D)
+                  
+                  
+                  
+                  rv$reportStatus <- paste(rv$reportStatus, sample, ORF1ab, N, E, D, result)
+                  incProgress(1/length(samples), specimenNumber)
+                }
                })
+  rv$reportStatus <- paste(rv$reportStatus, "完毕")
 })
 
 ```
@@ -246,9 +296,113 @@ Column {data-width=200}
 renderTable(rv$specimenMatrix)
 ```
 
-### Chart C
+### 阳性对照品扩增曲线
 
 ```{r}
-renderTable(input$layout)
+pos_ctrl_text <- reactive(
+  if (tbl_res() %>% filter(`Sample Name` == POS_CTRL, grepl("A|B|C", `Target Name`)) %>% pull(CT) %>% is.na() %>% any()) {
+    "异常：阳性对照品A/B/C有未扩增"
+  } else {
+    if ((tbl_res() %>% filter(`Sample Name` == POS_CTRL, grepl("A|B|C", `Target Name`)) %>% pull(CT) > 30) %>% any()) {
+      "异常：阳性对照品CT > 30"
+    } else {
+      "阳性对照品结果正常"
+    }
+  }
+)
+
+pos_ctrl_color <- reactive(
+  if (grepl("异",neg_ctrl_text())) {
+    "red"
+  } else {
+    "green"
+  }
+)
+
+pos_ctrl_ann_lst <- reactive({
+  list(
+    x = 20,
+    y = drn_ylim()*0.27,
+    text = pos_ctrl_text()[1],
+    font = list(color = pos_ctrl_color()),
+    xref = "x",
+    yref = "y",
+    align = 'left',
+    showarrow = FALSE
+  )
+})
+
+renderPlotly(
+  plot_ly(tbl_amp_pn(),
+        y = ~get(POS_CTRL), x= ~`Cycle`, color = ~`Target Name`,
+        type = "scatter",
+        # name = '阳性质控',
+        text = ~`Target Name`,
+        mode = "lines+markers",
+        hovertemplate = paste(
+          "<b>Target: %{text}</b><br><br>",
+          "%{yaxis.title.text}: %{y:.3f}<br>",
+          "%{xaxis.title.text}: %{x:d}<br>",
+          "<extra></extra>"
+          )) %>%
+    layout(legend = list(x = 0.1, y = 0.9),
+          annotations = pos_ctrl_ann_lst())
+)
 ```
 
+### 阴性对照品扩增曲线
+
+```{r}
+neg_ctrl_text <- reactive(
+  if (tbl_res() %>% filter(`Sample Name` == NEG_CTRL, grepl("A|B|C", `Target Name`)) %>% pull(CT) %>% is.na() %>% all()) {
+    if (tbl_res() %>% filter(`Sample Name` == NEG_CTRL, grepl("D", `Target Name`)) %>% pull(CT) %>% is.na() %>% any()) {
+      "异常：阴性对照品D通道有未扩增"
+    } else {
+      "阴性对照品结果正常"
+    }
+  } else {
+    "异常：阴性对照品A/B/C通道有扩增"
+  }
+)
+
+neg_ctrl_color <- reactive(
+  if (grepl("异",neg_ctrl_text())) {
+    "red"
+  } else {
+    "green"
+  }
+)
+
+neg_ctrl_ann_lst <- reactive({
+  list(
+    x = 20,
+    y = drn_ylim()*0.27,
+    text = neg_ctrl_text()[1],
+    font = list(color = neg_ctrl_color()),
+    xref = "x",
+    yref = "y",
+    align = 'left',
+    showarrow = FALSE
+  )
+})
+
+renderPlotly(
+  plot_ly(tbl_amp_pn(),
+        y = ~get(NEG_CTRL), x= ~`Cycle`, color = ~paste(`Target Name`, `Well`),
+        type = "scatter",
+        text = ~`Target Name`,
+        mode = "lines+markers",
+        hovertemplate = paste(
+          "<b>Target: %{text}</b><br><br>",
+          "%{yaxis.title.text}: %{y:.3f}<br>",
+          "%{xaxis.title.text}: %{x:d}<br>",
+          "<extra></extra>"
+          )) %>%
+    layout(legend = list(x = 0.1, y = 0.9),
+          annotations = neg_ctrl_ann_lst())
+)
+```
+
+
+          
+          

@@ -60,7 +60,8 @@ useShinyjs(rmd=TRUE)
 
 textInput("specimenNumber", label = "标本编号")
 
-textInput("reportNumber", label = "报告编号", placeholder = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
+# 报告编号为 项目编号 + 标本编号 + 版本编号（1-9）
+textInput("reportNumber", label = "报告编号（项目编号 + 标本编号 + 版本编号）", placeholder = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
 
 selectInput("ORF1ab", label = "ORF1ab", choices = c("", "RdRP基因（+）", "RdRP基因（-）"))
 
@@ -123,7 +124,7 @@ output$report <- downloadHandler(filename = function() {
     body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
     
     print(rpt, target = "report/rpt1.docx")
-    paste('report-', Sys.Date(), '.docx', sep='')
+    paste0(input$reportNumber, '.docx')
   },
   content = function(file) {
       file.copy("report/rpt1.docx", file)
@@ -213,6 +214,7 @@ observeEvent(input[[query_id]],{
 observeEvent(input[["specimenNumber"]], {
   # query specimen info
   rv$specimenInfo <- rv$spe_tbl %>% filter(specimenNumber == input[["specimenNumber"]])
+  updateTextInput(session, "reportNumber", value = paste0("P04", input$specimenNumber, "1"))
 })
 
 # 日志记录查询
