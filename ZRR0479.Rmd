@@ -275,14 +275,11 @@ observeEvent(input$submit, {
                   speInfo <- speNum2Info(specimenNumber)
                   
                   rv$reportStatus <- paste(rv$reportStatus, sample)
-                  # rv$reportStatus <- paste(rv$reportStatus, sample, specimenNumber, ORF1ab, N, E, D, result,
-                  #                          input$testDate, testerName, reporterName, reportNumber,
-                  #                          speInfo$name)
                   
                   # 写入到Word报告中
                   dir.create(rv$dir)
                   
-                  rpt <- read_docx("report/nCoV_template2.docx") %>%
+                  rpt <- read_docx("report/nCoV_template3.docx") %>%
                   body_replace_all_text("xingming", speInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("xingbie", speInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("nianling", speInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
