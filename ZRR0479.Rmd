@@ -16,6 +16,8 @@ runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
+# Author: Zhao Rui
+# Date: 2020-02-20
 library(flexdashboard)
 library(shinyMatrix)
 library(dplyr)
@@ -51,7 +53,8 @@ Column {.sidebar data-width=1000}
 rv <- reactiveValues(specimenMatrix = matrix(),
                      speTbl = as_tibble(DBI::dbReadTable(mydb, 'Specimen')),
                      runTbl = as_tibble(DBI::dbReadTable(mydb, 'Run')),
-                     reportStatus = "")
+                     reportStatus = "",
+                     dir = paste0("report/", format(Sys.time(), "%Y%m%d%H%M")))
 
 tags$link(rel = 'stylesheet', type = 'text/css', href = 'www/style.css')
 
@@ -89,9 +92,9 @@ dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
 userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 
-selectInput("tester", label = "检测员", choices = userNames)
+selectInput("tester", label = "检测员", choices = userNames, selected = 122953)
 
-selectInput("checker", label = "审核员", choices = userNames)
+selectInput("checker", label = "审核员", choices = userNames, selected = 122953)
 
 actionButton("submit", "生成报告")
 
@@ -108,32 +111,10 @@ output$downloadUI <- renderUI( {
 })
 
 output$report <- downloadHandler(filename = function() {
-    rpt <- read_docx("report/nCoV_template1.docx") %>%
-    body_replace_all_text("xingming", rv$specimenInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("xingbie", rv$specimenInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("nianling", rv$specimenInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("yangbenleixing", rv$specimenInfo$specimenType, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("yangbenzhuangtai", rv$specimenInfo$specimenStatus, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("weiyibaioshi", rv$specimenInfo$specimenNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("binganhao", rv$specimenInfo$medicalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("songjiandanwei", rv$specimenInfo$institution, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("yuanshibianhao", rv$specimenInfo$originalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("yishi", rv$specimenInfo$doctor, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("caijiriqi", rv$specimenInfo$collectDate, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("jieshouriqi", rv$specimenInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("bgbianhao", input$reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("jiancejieguo", input$result, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("rdpr_result", input$ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("n_result", input$N, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("e_result", input$E, only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
-    body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
-
-    print(rpt, target = "report/rpt1.docx")
-    paste('report-', Sys.Date(), '.docx', sep='')
+     paste0('nCoV-', Sys.Date(), '.zip')
   },
   content = function(file) {
-      file.copy("report/rpt1.docx", file)
+      file.copy(paste0(rv$dir, ".zip"), file)
     }
 )
 
@@ -253,6 +234,15 @@ Result <- function(ORF1ab, N, E, D) {
   
 }
 
+speNum2Info <- function(speNum) {
+  filTbl <- rv$speTbl %>% filter(specimenNumber == speNum)
+  if (nrow(filTbl) == 1) {
+    return(as.list(filTbl))
+  } else {
+    return("错误")
+  }
+}
+
 observeEvent(input$submit, {
   rv$reportStatus <- "开始分析数据"
   samples <- unique(tbl_res()$`Sample Name`)
@@ -276,12 +266,50 @@ observeEvent(input$submit, {
                   
                   result <- Result(ORF1ab, N, E, D)
                   
+                  testerName <- names(userNames[userNames == input$tester])
                   
+                  reporterName <- names(userNames[userNames == input$checker])
                   
-                  rv$reportStatus <- paste(rv$reportStatus, sample, ORF1ab, N, E, D, result)
+                  reportNumber <- paste0("P04", specimenNumber, "1")
+                  
+                  speInfo <- speNum2Info(specimenNumber)
+                  
+                  rv$reportStatus <- paste(rv$reportStatus, sample)
+                  # rv$reportStatus <- paste(rv$reportStatus, sample, specimenNumber, ORF1ab, N, E, D, result,
+                  #                          input$testDate, testerName, reporterName, reportNumber,
+                  #                          speInfo$name)
+                  
+                  # 写入到Word报告中
+                  dir.create(rv$dir)
+                  
+                  rpt <- read_docx("report/nCoV_template2.docx") %>%
+                  body_replace_all_text("xingming", speInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("xingbie", speInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("nianling", speInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("yangbenleixing", speInfo$specimenType, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("yangbenzhuangtai", speInfo$specimenStatus, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("weiyibaioshi", speInfo$specimenNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("binganhao", speInfo$medicalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("songjiandanwei", speInfo$institution, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("yuanshibianhao", speInfo$originalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("yishi", speInfo$doctor, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("caijiriqi", speInfo$collectDate, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("jieshouriqi", speInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("bgbianhao", reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("jiancejieguo", result, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("rdpr_result", ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
+                  
+                  file <- paste0(rv$dir, "/", reportNumber, ".docx")
+                  print(rpt, target = file)
+
                   incProgress(1/length(samples), specimenNumber)
                 }
                })
+  zip(paste0(rv$dir, ".zip"), rv$dir)
   rv$reportStatus <- paste(rv$reportStatus, "完毕")
 })
 
