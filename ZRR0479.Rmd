@@ -25,6 +25,7 @@ library(DBI)
 library(plotly)
 library(readxl)
 library(tidyr)
+library(officer)
 source("share.R")
 
 killDbConnections()
@@ -37,6 +38,9 @@ addResourcePath("www", "www")
 
 POS_CTRL = 'p'
 NEG_CTRL = 'n'
+
+report_template <- "report/nCoV_template3lc.docx"
+
 ```
 
 之江生物Z-RR-0479结果分析（测试）
@@ -80,19 +84,17 @@ output$ui <- renderUI( {
   )
 })
 
-dateInput("expDate", label = "实验日期", value = Sys.Date())
+dateInput("testDate", label = "实验日期/检测日期", value = Sys.Date())
 
 fileInput("qdx_xlsx", label = "选择QDx PCR导出Excel文件",
           buttonLabel = "打开",
           placeholder = ".xlsx file", accept = c(".xlsx"))
 
-dateInput("testDate", label = "检测日期", value = Sys.Date())
-
 dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
 userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 
-selectInput("tester", label = "检测员", choices = userNames, selected = 122953)
+selectInput("tester", label = "检测员", choices = userNames, selected = 277895)
 
 selectInput("checker", label = "审核员", choices = userNames, selected = 122953)
 
@@ -126,7 +128,7 @@ expNum2speNum <- function(expNum) {
   }
   if (grepl("^p", tolower(expNum)) ) return(POS_CTRL)
   if (grepl("^n", tolower(expNum)) ) return(NEG_CTRL)
-  filTbl <- rv$runTbl %>% filter(experimentNumber == as.integer(expNum), date == toString(input$expDate), testNumber == 'P04')
+  filTbl <- rv$runTbl %>% filter(experimentNumber == as.integer(expNum), date == toString(input$testDate), testNumber == 'P04')
   if (nrow(filTbl) == 1) {
     return(filTbl$specimenNumber)
   } else if (nrow(filTbl) > 1) {
@@ -146,7 +148,7 @@ layout2specimen <- function(mat) {
   return(spe)
 }
 
-observeEvent({input$expDate; input$layout}, {
+observeEvent({input$testDate; input$layout}, {
   rv$specimenMatrix <- layout2specimen(input$layout)
 })
 
@@ -279,7 +281,12 @@ observeEvent(input$submit, {
                   # 写入到Word报告中
                   dir.create(rv$dir)
                   
-                  rpt <- read_docx("report/nCoV_template3.docx") %>%
+                  # 将靶点结果写完整
+                  ORF1ab <- paste0("RdPR基因（", ORF1ab, "）")
+                  N <- paste0("N基因（", N, "）")
+                  E <- paste0("E基因（", E, "）")
+                  
+                  rpt <- read_docx(report_template) %>%
                   body_replace_all_text("xingming", speInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("xingbie", speInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("nianling", speInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
@@ -302,7 +309,27 @@ observeEvent(input$submit, {
                   
                   file <- paste0(rv$dir, "/", reportNumber, ".docx")
                   print(rpt, target = file)
-
+                  
+                  # insert database record for each report
+                  # table cols:
+                  # reportNumber	specimenNumber	ORF1ab	N	E	result	testDate	reportDate	tester	checker	updatetime
+                  ins_sql <- paste0("INSERT INTO `nCoV` VALUES('",
+                                    paste(reportNumber, specimenNumber, ORF1ab, N, E, result, input$testDate,
+                                    input$reportDate, input$tester, input$checker, sep = "', '"),
+                                    "', NOW()) ON DUPLICATE KEY UPDATE
+                                    specimenNumber = '", specimenNumber, "',
+                                    ORF1ab = '", ORF1ab, "',
+                                    N = '", N, "',
+                                    E = '", E, "',
+                                    result = '", result, "',
+                                    testDate = '", input$testDate, "',
+                                    reportDate = '", input$reportDate, "',
+                                    tester = '", input$tester, "',
+                                    checker = '", input$checker, "',
+                                    updatetime = NOW()")
+                  print(ins_sql)
+                  dbExecute(mydb, ins_sql)
+                  
                   incProgress(1/length(samples), specimenNumber)
                 }
                })
