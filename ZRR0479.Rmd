@@ -298,9 +298,9 @@ observeEvent(input$submit, {
                   dir.create(rv$dir)
                   
                   # 将靶点结果写完整
-                  # ORF1ab <- paste0("RdPR基因（", ORF1ab, "）")
-                  # N <- paste0("N基因（", N, "）")
-                  # E <- paste0("E基因（", E, "）")
+                  ORF1ab <- paste0("RdPR基因（", ORF1ab, "）")
+                  N <- paste0("N基因（", N, "）")
+                  E <- paste0("E基因（", E, "）")
                   
                   rpt <- read_docx(report_template) %>%
                   body_replace_all_text("xingming", speInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
