@@ -24,6 +24,8 @@ library(dplyr)
 library(DBI)
 library(plotly)
 library(readxl)
+library(stringr)
+library(purrr)
 library(tidyr)
 library(officer)
 source("share.R")
@@ -39,7 +41,7 @@ addResourcePath("www", "www")
 POS_CTRL = 'p'
 NEG_CTRL = 'n'
 
-report_template <- "report/nCoV_template3lc.docx"
+report_template <- "report/nCoV_template4.docx"
 
 ```
 
@@ -57,6 +59,7 @@ Column {.sidebar data-width=1000}
 rv <- reactiveValues(specimenMatrix = matrix(),
                      speTbl = as_tibble(DBI::dbReadTable(mydb, 'Specimen')),
                      runTbl = as_tibble(DBI::dbReadTable(mydb, 'Run')),
+                     nCoVTbl = as_tibble(DBI::dbReadTable(mydb, 'nCoV')),
                      reportStatus = "",
                      dir = paste0("report/", format(Sys.time(), "%Y%m%d%H%M")))
 
@@ -97,6 +100,8 @@ userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 selectInput("tester", label = "检测员", choices = userNames, selected = 277895)
 
 selectInput("checker", label = "审核员", choices = userNames, selected = 122953)
+
+selectInput("isRerun", label = "是否是重分析", choices = list("是" = 1, "否" = 0), selected = 0)
 
 actionButton("submit", "生成报告")
 
@@ -272,7 +277,18 @@ observeEvent(input$submit, {
                   
                   reporterName <- names(userNames[userNames == input$checker])
                   
-                  reportNumber <- paste0("P04", specimenNumber, "1")
+                  reportPrefix <- paste0("P04", specimenNumber)
+                  
+                  reportRecord <- rv$nCoVTbl %>% filter(grepl(reportPrefix, `reportNumber`)) %>%
+                                    arrange(reportNumber) %>% slice(n()) %>% pull(reportNumber)
+                  if (is_empty(reportRecord) ) {
+                    reportVer <- 1
+                  } else if (input$isRerun == 1) {
+                    reportVer <- str_sub(reportRecord, -1, -1)
+                  } else {
+                    reportVer <- str_sub(reportRecord, -1, -1) %>% as.integer() + 1
+                  }
+                  reportNumber <- paste0("P04", specimenNumber, reportVer)
                   
                   speInfo <- speNum2Info(specimenNumber)
                   
@@ -282,9 +298,9 @@ observeEvent(input$submit, {
                   dir.create(rv$dir)
                   
                   # 将靶点结果写完整
-                  ORF1ab <- paste0("RdPR基因（", ORF1ab, "）")
-                  N <- paste0("N基因（", N, "）")
-                  E <- paste0("E基因（", E, "）")
+                  # ORF1ab <- paste0("RdPR基因（", ORF1ab, "）")
+                  # N <- paste0("N基因（", N, "）")
+                  # E <- paste0("E基因（", E, "）")
                   
                   rpt <- read_docx(report_template) %>%
                   body_replace_all_text("xingming", speInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
@@ -301,9 +317,9 @@ observeEvent(input$submit, {
                   body_replace_all_text("jieshouriqi", speInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("bgbianhao", reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jiancejieguo", result, only_at_cursor = FALSE, fixed = FALSE) %>%
-                  body_replace_all_text("rdpr_result", ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
-                  body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
-                  body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  # body_replace_all_text("rdpr_result", ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  # body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  # body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
                   

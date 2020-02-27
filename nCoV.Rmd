@@ -102,7 +102,7 @@ output$downloadUI <- renderUI( {
 })
 
 output$report <- downloadHandler(filename = function() {
-    rpt <- read_docx("report/nCoV_template3.docx") %>%
+    rpt <- read_docx("report/nCoV_template3lc.docx") %>%
     body_replace_all_text("xingming", rv$specimenInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
     body_replace_all_text("xingbie", rv$specimenInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
     body_replace_all_text("nianling", rv$specimenInfo$age, only_at_cursor = FALSE, fixed = FALSE) %>%
