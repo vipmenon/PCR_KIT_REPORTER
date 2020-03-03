@@ -41,7 +41,8 @@ addResourcePath("www", "www")
 POS_CTRL = 'p'
 NEG_CTRL = 'n'
 
-report_template <- "report/nCoV_template4.docx"
+report_template_pos <- "report/nCoV_template3.docx"
+report_template_neg <- "report/nCoV_template4.docx"
 
 ```
 
@@ -168,7 +169,7 @@ tbl_res <- reactive({
   } else {
     read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 40)
     # 调试数据
-    # tbl_res <- read_excel("/var/share/QuantStudioDx/2019-nCoV/2020-2-21/2020-02-21_2019-nCoV_data.xlsx", sheet = "Results", skip = 40)
+    # tbl_res <- read_excel("/var/share/QuantStudioDx/2019-nCoV/2020-3-2/2020-03-02 ZJ-2019nCoV_data.xlsx", sheet = "Results", skip = 40)
   }
 })
 
@@ -179,7 +180,7 @@ tbl_amp <- reactive({
     read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 40,
                col_types = c("numeric", "text", "text", "skip", "numeric"))
     # 调试数据
-    # tbl_amp <- read_excel("/var/share/QuantStudioDx/2019-nCoV/2020-2-21/2020-02-21_2019-nCoV_data.xlsx", sheet = "Amplification Data", skip = 40)
+    # tbl_amp <- read_excel("/var/share/QuantStudioDx/2019-nCoV/2020-3-2/2020-03-02 ZJ-2019nCoV_data.xlsx", sheet = "Amplification Data", skip = 40)
   }
 })
 
@@ -258,6 +259,23 @@ observeEvent(input$submit, {
                detail = '依次分析所有样本结果...', value = 0, {
                 for (sample in samples) {
                   specimenNumber <- expNum2speNum(sample)
+                  
+                  # draw amplification plot
+                  amp_data <- tbl_amp_smp() %>% filter(`Sample Name` == sample)
+                  
+                  # plot_ly(amp_data,
+                  #   y = ~`Delta Rn`, x= ~`Cycle`, color = ~`Target Name`,
+                  #   type = "scatter",
+                  #   mode = "lines+markers") %>%
+                  #   layout(legend = list(x = 0.1, y = 0.9))
+                  
+                  amp_fig <- ggplot(amp_data, aes(`Cycle`, `Delta Rn`, color = `Target Name`)) +
+                    geom_line() +
+                    geom_point() +
+                    theme_bw() +
+                    theme(legend.background = element_rect(fill=alpha('white', 0)),
+                          legend.position = c(0.15, 0.75))
+
                   ORF1ab <- tbl_res() %>%
                     filter(`Sample Name` == sample, `Target Name` == 'A') %>%
                     pull(`CT`) %>% CT2Res()
@@ -302,6 +320,12 @@ observeEvent(input$submit, {
                   N <- paste0("N基因（", N, "）")
                   E <- paste0("E基因（", E, "）")
                   
+                  if (result == "未检出") {
+                    report_template = report_template_neg
+                  } else {
+                    report_template = report_template_pos
+                  }
+                  
                   rpt <- read_docx(report_template) %>%
                   body_replace_all_text("xingming", speInfo$name, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("xingbie", speInfo$gender, only_at_cursor = FALSE, fixed = FALSE) %>%
@@ -317,14 +341,18 @@ observeEvent(input$submit, {
                   body_replace_all_text("jieshouriqi", speInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("bgbianhao", reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jiancejieguo", result, only_at_cursor = FALSE, fixed = FALSE) %>%
-                  # body_replace_all_text("rdpr_result", ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
-                  # body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
-                  # body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("rdpr_result", ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
                   
                   file <- paste0(rv$dir, "/", reportNumber, ".docx")
+                  fig_file <- paste0(rv$dir, "/", reportNumber, ".png")
                   print(rpt, target = file)
+                  png(filename = fig_file, width = 1200, height = 900, res = 150)
+                  print(amp_fig)
+                  dev.off()
                   
                   # insert database record for each report
                   # table cols:

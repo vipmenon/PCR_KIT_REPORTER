@@ -79,7 +79,7 @@ textInput("gender", label = "性别")
 
 textInput("age", label = "年龄")
 
-selectInput("specimenType", label = "标本类型", choices = c("鼻咽拭子", "手术组织", "穿刺组织", "全血",
+selectInput("specimenType", label = "标本类型", choices = c("咽拭子", "鼻咽拭子", "手术组织", "穿刺组织", "全血",
                                     "血浆", "血清", "尿液", "粪便", "分泌物", "呕吐物",
                                     "唾液", "脑脊液", "淋巴液", "房水","其他"))
 
