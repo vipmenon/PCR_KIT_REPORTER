@@ -42,8 +42,19 @@ addResourcePath("www", "www")
 POS_CTRL = 'p'
 NEG_CTRL = 'n'
 
-report_template_pos <- "report/nCoV_template3.docx"
-report_template_neg <- "report/nCoV_template4.docx"
+CT_CUTOFF = list(Liferiver_p = 43, Liferiver_h = 43, Biogerm_p = 38)
+
+# 中文模板 （之江版本）
+# report_template_pos <- "report/nCoV_template3.docx"
+# report_template_neg <- "report/nCoV_template4.docx"
+
+# 中英模板
+report_template_pos <- list(Liferiver_p = "report/nCoV_template6.docx",
+                            Liferiver_h = "report/nCoV_template3.docx",
+                            Biogerm_p = "report/nCoV_template7.docx")
+report_template_neg <- list(Liferiver_p = "report/nCoV_template6.docx",
+                            Liferiver_h = "report/nCoV_template4.docx",
+                            Biogerm_p = "report/nCoV_template7.docx")
 
 ```
 
@@ -69,6 +80,13 @@ tags$link(rel = 'stylesheet', type = 'text/css', href = 'www/style.css')
 
 # textInput("reportNumber", label = "报告起始编号（按Panel从上到下、从左到右的样本结果顺序依次编号）",
 #           value = paste0("P04", format(Sys.Date(), "%y%m%d"), "01"))
+
+selectInput(inputId = "KIT_BRAND", 
+            label = "检测试剂盒厂家 - 模板类型",
+            choices = list("之江生物 - 个人中英文" = "Liferiver_p",
+                           "之江生物 - 医院中文" = "Liferiver_h",
+                           "伯杰医疗 - 个人中英文" = "Biogerm_p"),
+            selected = "Biogerm_p")
 
 uiOutput("ui")
 
@@ -99,9 +117,9 @@ dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
 userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 
-selectInput("tester", label = "检测员", choices = userNames, selected = 277895)
+selectInput("tester", label = "检测员", choices = userNames, selected = 16359)
 
-selectInput("checker", label = "审核员", choices = userNames, selected = 122953)
+selectInput("checker", label = "审核员", choices = userNames, selected = 882287)
 
 selectInput("isRerun", label = "是否是重分析", choices = list("是" = 1, "否" = 0), selected = 0)
 
@@ -223,8 +241,22 @@ tbl_amp_pn <- reactive({
 })
 
 CT2Res <- function(CT, CT_CUTOFF = 43) {
-  if (is.na(CT)) return("-")
-  if (CT <= CT_CUTOFF) {
+  if (is.na(CT)) {
+    return("-")
+  } else if (CT <= CT_CUTOFF) {
+    return("+")
+  } else {
+    return("-")
+  }
+}
+
+Tbl2Res <- function(df, sample, target, CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]]) {
+  CT <- df %>% filter(`Sample Name` == sample, `Target Name` == target) %>% pull(`CT`)
+  if (is_empty(CT)) {
+    return("-")
+  } else if (is.na(CT)) {
+    return("-")
+  } else if (CT <= CT_CUTOFF) {
     return("+")
   } else {
     return("-")
@@ -236,10 +268,22 @@ Result <- function(ORF1ab, N, E, D) {
   if (all(ORF1ab == "+", N == "+", E == "+") ) return("检出")
   if (all(ORF1ab == "+", N == "+", E == "-") ) return("检出")
   if (all(ORF1ab == "+", N == "-", E == "+") ) return("检出")
-  if (all(ORF1ab == "+", N == "-", E == "-") ) return("可疑结果")
-  if (all(ORF1ab == "-", N == "+", E == "-") ) return("可能为近源冠状病毒")
-  if (all(ORF1ab == "-", N == "-", E == "+") ) return("可能为近源冠状病毒")
+  if (all(ORF1ab == "+", N == "-", E == "-") ) return("可疑")
+  if (all(ORF1ab == "-", N == "+", E == "-") ) return("疑似近源冠状病毒")
+  if (all(ORF1ab == "-", N == "-", E == "+") ) return("疑似近源冠状病毒")
   if (all(ORF1ab == "-", N == "-", E == "-") ) return("未检出")
+  
+}
+
+ResultEN <- function(ORF1ab, N, E, D) {
+  # 根据ABCD通道CT值判定结果
+  if (all(ORF1ab == "+", N == "+", E == "+") ) return("Detected")
+  if (all(ORF1ab == "+", N == "+", E == "-") ) return("Detected")
+  if (all(ORF1ab == "+", N == "-", E == "+") ) return("Detected")
+  if (all(ORF1ab == "+", N == "-", E == "-") ) return("Suspected")
+  if (all(ORF1ab == "-", N == "+", E == "-") ) return("Suspected near source coronavirus")
+  if (all(ORF1ab == "-", N == "-", E == "+") ) return("Suspected near source coronavirus")
+  if (all(ORF1ab == "-", N == "-", E == "-") ) return("NOT Detected")
   
 }
 
@@ -277,20 +321,26 @@ observeEvent(input$submit, {
                     theme(legend.background = element_rect(fill=alpha('white', 0)),
                           legend.position = c(0.15, 0.75))
 
-                  ORF1ab <- tbl_res() %>%
-                    filter(`Sample Name` == sample, `Target Name` == 'A') %>%
-                    pull(`CT`) %>% CT2Res()
-                  N <- tbl_res() %>%
-                    filter(`Sample Name` == sample, `Target Name` == 'B') %>%
-                    pull(`CT`) %>% CT2Res()
-                  E <- tbl_res() %>%
-                    filter(`Sample Name` == sample, `Target Name` == 'C') %>%
-                    pull(`CT`) %>% CT2Res()
-                  D <- tbl_res() %>%
-                    filter(`Sample Name` == sample, `Target Name` == 'D') %>%
-                    pull(`CT`) %>% CT2Res()
+                  # ORF1ab <- tbl_res() %>%
+                  #   filter(`Sample Name` == sample, `Target Name` == 'A') %>%
+                  #   pull(`CT`) %>% CT2Res()
+                  # N <- tbl_res() %>%
+                  #   filter(`Sample Name` == sample, `Target Name` == 'B') %>%
+                  #   pull(`CT`) %>% CT2Res(CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
+                  # E <- tbl_res() %>%
+                  #   filter(`Sample Name` == sample, `Target Name` == 'C') %>%
+                  #   pull(`CT`) %>% CT2Res(CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
+                  # D <- tbl_res() %>%
+                  #   filter(`Sample Name` == sample, `Target Name` == 'D') %>%
+                  #   pull(`CT`) %>% CT2Res(CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
+                  
+                  ORF1ab <- Tbl2Res(tbl_res(), sample, 'A',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
+                  N <- Tbl2Res(tbl_res(), sample, 'B',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
+                  E <- Tbl2Res(tbl_res(), sample, 'C',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
+                  D <- Tbl2Res(tbl_res(), sample, 'D',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
                   
                   result <- Result(ORF1ab, N, E, D)
+                  resultEN <- ResultEN(ORF1ab, N, E, D)
                   
                   testerName <- names(userNames[userNames == input$tester])
                   
@@ -317,14 +367,21 @@ observeEvent(input$submit, {
                   dir.create(rv$dir)
                   
                   # 将靶点结果写完整
-                  ORF1ab <- paste0("RdPR基因（", ORF1ab, "）")
-                  N <- paste0("N基因（", N, "）")
-                  E <- paste0("E基因（", E, "）")
+                  ORF1ab <- paste0("ORF1ab（", ORF1ab, "）")
+                  N <- paste0("N（", N, "）")
+                  E <- paste0("E（", E, "）")
+                  ptargets <- c(ORF1ab, N, E)
+                  if (any(grepl("\\+", ptargets))) {
+                    ptarget <- paste0(ptargets[grepl("\\+", ptargets)], collapse = " ")
+                  } else {
+                    ptarget <- "无"
+                  }
+                  
                   
                   if (result == "未检出") {
-                    report_template = report_template_neg
+                    report_template = report_template_neg[[input$KIT_BRAND]]
                   } else {
-                    report_template = report_template_pos
+                    report_template = report_template_pos[[input$KIT_BRAND]]
                   }
                   
                   rpt <- read_docx(report_template) %>%
@@ -336,15 +393,18 @@ observeEvent(input$submit, {
                   body_replace_all_text("weiyibaioshi", speInfo$specimenNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("binganhao", speInfo$medicalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("songjiandanwei", speInfo$institution, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("lianxidianhua", speInfo$contactNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("yuanshibianhao", speInfo$originalNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("yishi", speInfo$doctor, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("caijiriqi", speInfo$collectDate, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jieshouriqi", speInfo$receiveDate, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("bgbianhao", reportNumber, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jiancejieguo", result, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("yingwenjieguo", resultEN, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("rdpr_result", ORF1ab, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("ptarget", ptarget, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
                   

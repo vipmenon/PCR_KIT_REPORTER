@@ -55,7 +55,7 @@ rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FA
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`,
                        specimenType `标本类型`, specimenStatus `标本状态`,
-                       medicalNumber `病案号`, institution `送检单位`, originalNumber `原始编号`,
+                       contactNumber `联系方式`, institution `送检单位`, originalNumber `原始编号`,
                        collectDate `采集日期`, receiveDate `接受日期`,
                        updatetime `更新日期`
                  FROM `Specimen`
@@ -90,6 +90,8 @@ textInput("medicalNumber", label = "病案号")
 
 textInput("institution", label = "送检单位")
 
+textInput("contactNumber", label = "联系电话")
+
 textInput("originalNumber", label = "原始编号")
 
 textInput("doctor", label = "送检医师")
@@ -102,7 +104,7 @@ actionButton("submit", label = "新增/更新")
 
 query_id <- "specimenNumber"
 
-update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "originalNumber", "doctor", "collectDate", "receiveDate")
+update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "contactNumber", "originalNumber", "doctor", "collectDate", "receiveDate")
 
 tags$span(" ")
 
