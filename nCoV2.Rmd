@@ -371,10 +371,12 @@ observeEvent(input$submit, {
                   N <- paste0("N（", N, "）")
                   E <- paste0("E（", E, "）")
                   ptargets <- c(ORF1ab, N, E)
+                  ptarget_en <- ""
                   if (any(grepl("\\+", ptargets))) {
                     ptarget <- paste0(ptargets[grepl("\\+", ptargets)], collapse = " ")
                   } else {
                     ptarget <- "无"
+                    ptarget_en <- "NA"
                   }
                   
                   
@@ -405,6 +407,7 @@ observeEvent(input$submit, {
                   body_replace_all_text("n_result", N, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("e_result", E, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("ptarget", ptarget, only_at_cursor = FALSE, fixed = FALSE) %>%
+                  body_replace_all_text("pentarget", ptarget_en, only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("jianceriqi", toString(input$testDate), only_at_cursor = FALSE, fixed = FALSE) %>%
                   body_replace_all_text("baogaoriqi", toString(input$reportDate), only_at_cursor = FALSE, fixed = FALSE)
                   
