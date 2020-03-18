@@ -49,12 +49,12 @@ CT_CUTOFF = list(Liferiver_p = 43, Liferiver_h = 43, Biogerm_p = 38)
 # report_template_neg <- "report/nCoV_template4.docx"
 
 # 中英模板
-report_template_pos <- list(Liferiver_p = "report/nCoV_template6.docx",
+report_template_pos <- list(Liferiver_p = "report/nCoV_template8.docx",
                             Liferiver_h = "report/nCoV_template3.docx",
-                            Biogerm_p = "report/nCoV_template7.docx")
-report_template_neg <- list(Liferiver_p = "report/nCoV_template6.docx",
+                            Biogerm_p = "report/nCoV_template9.docx")
+report_template_neg <- list(Liferiver_p = "report/nCoV_template8.docx",
                             Liferiver_h = "report/nCoV_template4.docx",
-                            Biogerm_p = "report/nCoV_template7.docx")
+                            Biogerm_p = "report/nCoV_template9.docx")
 
 ```
 
@@ -269,8 +269,8 @@ Result <- function(ORF1ab, N, E, D) {
   if (all(ORF1ab == "+", N == "+", E == "-") ) return("检出")
   if (all(ORF1ab == "+", N == "-", E == "+") ) return("检出")
   if (all(ORF1ab == "+", N == "-", E == "-") ) return("可疑")
-  if (all(ORF1ab == "-", N == "+", E == "-") ) return("疑似近源冠状病毒")
-  if (all(ORF1ab == "-", N == "-", E == "+") ) return("疑似近源冠状病毒")
+  if (all(ORF1ab == "-", N == "+", E == "-") ) return("可疑") # 疑似近源冠状病毒
+  if (all(ORF1ab == "-", N == "-", E == "+") ) return("可疑") # 疑似近源冠状病毒
   if (all(ORF1ab == "-", N == "-", E == "-") ) return("未检出")
   
 }
@@ -281,8 +281,8 @@ ResultEN <- function(ORF1ab, N, E, D) {
   if (all(ORF1ab == "+", N == "+", E == "-") ) return("Detected")
   if (all(ORF1ab == "+", N == "-", E == "+") ) return("Detected")
   if (all(ORF1ab == "+", N == "-", E == "-") ) return("Suspected")
-  if (all(ORF1ab == "-", N == "+", E == "-") ) return("Suspected near source coronavirus")
-  if (all(ORF1ab == "-", N == "-", E == "+") ) return("Suspected near source coronavirus")
+  if (all(ORF1ab == "-", N == "+", E == "-") ) return("Suspected")
+  if (all(ORF1ab == "-", N == "-", E == "+") ) return("Suspected")
   if (all(ORF1ab == "-", N == "-", E == "-") ) return("NOT Detected")
   
 }
@@ -321,19 +321,6 @@ observeEvent(input$submit, {
                     theme(legend.background = element_rect(fill=alpha('white', 0)),
                           legend.position = c(0.15, 0.75))
 
-                  # ORF1ab <- tbl_res() %>%
-                  #   filter(`Sample Name` == sample, `Target Name` == 'A') %>%
-                  #   pull(`CT`) %>% CT2Res()
-                  # N <- tbl_res() %>%
-                  #   filter(`Sample Name` == sample, `Target Name` == 'B') %>%
-                  #   pull(`CT`) %>% CT2Res(CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
-                  # E <- tbl_res() %>%
-                  #   filter(`Sample Name` == sample, `Target Name` == 'C') %>%
-                  #   pull(`CT`) %>% CT2Res(CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
-                  # D <- tbl_res() %>%
-                  #   filter(`Sample Name` == sample, `Target Name` == 'D') %>%
-                  #   pull(`CT`) %>% CT2Res(CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
-                  
                   ORF1ab <- Tbl2Res(tbl_res(), sample, 'A',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
                   N <- Tbl2Res(tbl_res(), sample, 'B',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
                   E <- Tbl2Res(tbl_res(), sample, 'C',CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]])
@@ -472,7 +459,7 @@ pos_ctrl_text <- reactive(
 )
 
 pos_ctrl_color <- reactive(
-  if (grepl("异",neg_ctrl_text())) {
+  if (grepl("异",pos_ctrl_text())) {
     "red"
   } else {
     "green"
@@ -516,7 +503,7 @@ renderPlotly(
 neg_ctrl_text <- reactive(
   if (tbl_res() %>% filter(`Sample Name` == NEG_CTRL, grepl("A|B|C", `Target Name`)) %>% pull(CT) %>% is.na() %>% all()) {
     if (tbl_res() %>% filter(`Sample Name` == NEG_CTRL, grepl("D", `Target Name`)) %>% pull(CT) %>% is.na() %>% any()) {
-      "异常：阴性对照品D通道有未扩增"
+      "警告：阴性对照品D通道有未扩增"
     } else {
       "阴性对照品结果正常"
     }

@@ -27,6 +27,13 @@ get_select_list <- function(con, table, key_col, value_col) {
   return(sel_lst)
 }
 
+get_user_list <- function(con, table = "`User`", key_col = "name", value_col = "userKey") {
+  sel_tbl <- as_tibble(DBI::dbReadTable(con, table))
+  sel_lst <- as.list(sel_tbl %>% filter(isValid == 1) %>% pull(value_col))
+  names(sel_lst) <- sel_tbl %>% filter(isValid == 1) %>% pull(key_col)
+  return(sel_lst)
+}
+
 get_table_id <- function(con, table) {
   # get table id using table name
   table_sql <- paste("SELECT `id` FROM `Table` WHERE `name` = '", table, "'", sep = "")

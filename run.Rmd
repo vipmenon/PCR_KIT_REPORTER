@@ -81,7 +81,7 @@ textInput("specimenNumber", label = "标本号")
 
 textInput("specimenName", label = "标本姓名")
 
-selectInput("userId", label = "实验员", choices = get_select_list(mydb, "`User`", "name", "userKey"))
+selectInput("userId", label = "实验员", choices = get_user_list(mydb))
 
 actionButton("submit", label = "新增/更新")
 
