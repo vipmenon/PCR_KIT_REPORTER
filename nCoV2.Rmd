@@ -51,10 +51,10 @@ CT_CUTOFF = list(Liferiver_p = 43, Liferiver_h = 43, Biogerm_p = 38)
 # 中英模板
 report_template_pos <- list(Liferiver_p = "report/nCoV_template8.docx",
                             Liferiver_h = "report/nCoV_template3.docx",
-                            Biogerm_p = "report/nCoV_template9.docx")
+                            Biogerm_p = "report/nCoV_template9z.docx")
 report_template_neg <- list(Liferiver_p = "report/nCoV_template8.docx",
                             Liferiver_h = "report/nCoV_template4.docx",
-                            Biogerm_p = "report/nCoV_template9.docx")
+                            Biogerm_p = "report/nCoV_template9z.docx")
 
 ```
 
@@ -117,9 +117,9 @@ dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
 userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 
-selectInput("tester", label = "检测员", choices = userNames, selected = 16359)
+selectInput("tester", label = "检测员", choices = userNames, selected = 882287)
 
-selectInput("checker", label = "审核员", choices = userNames, selected = 882287)
+selectInput("checker", label = "审核员", choices = userNames, selected = 366169)
 
 selectInput("isRerun", label = "是否是重分析", choices = list("是" = 1, "否" = 0), selected = 0)
 
@@ -265,6 +265,7 @@ Tbl2Res <- function(df, sample, target, CT_CUTOFF = CT_CUTOFF[[input$KIT_BRAND]]
 
 Result <- function(ORF1ab, N, E, D) {
   # 根据ABCD通道CT值判定结果
+  if (D == "-") return("需复检")
   if (all(ORF1ab == "+", N == "+", E == "+") ) return("检出")
   if (all(ORF1ab == "+", N == "+", E == "-") ) return("检出")
   if (all(ORF1ab == "+", N == "-", E == "+") ) return("检出")
@@ -277,6 +278,7 @@ Result <- function(ORF1ab, N, E, D) {
 
 ResultEN <- function(ORF1ab, N, E, D) {
   # 根据ABCD通道CT值判定结果
+  if (D == "-") return("QC Failed")
   if (all(ORF1ab == "+", N == "+", E == "+") ) return("Detected")
   if (all(ORF1ab == "+", N == "+", E == "-") ) return("Detected")
   if (all(ORF1ab == "+", N == "-", E == "+") ) return("Detected")

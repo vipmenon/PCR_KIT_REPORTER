@@ -69,17 +69,19 @@ textOutput("p")
 ```{r}
 useShinyjs(rmd=TRUE)
 
-numericInput("id", label = "记录编号", value = NA, min = 1)
+numericInput("id", label = "记录编号（新增记录时此处留空）", value = NA, min = 1)
 
-selectInput("testNumber", label = "检测项目", choices = get_select_list(mydb, "`Test`", "title", "testNumber"))
+selectInput("testNumber", label = "检测项目",
+            choices = get_select_list(mydb, "`Test`", "title", "testNumber"),
+            selected = "P04")
 
 dateInput("date", label = "实验日期", value = Sys.Date())
 
 textInput("experimentNumber", label = "实验号")
 
-textInput("specimenNumber", label = "标本号")
+textInput("specimenNumber", label = "样本编号")
 
-textInput("specimenName", label = "标本姓名")
+textInput("specimenName", label = "样本姓名")
 
 selectInput("userId", label = "实验员", choices = get_user_list(mydb))
 
@@ -175,6 +177,7 @@ observeEvent(input$userKey, {
   }
   
   if (rv$permission[["insert"]]) {
+    disable("specimenName")
     js$refocus("specimenNumber")
     updateTextInput(session, "userId", value = input$userKey)
   }

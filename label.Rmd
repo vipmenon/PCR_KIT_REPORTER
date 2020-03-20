@@ -11,6 +11,7 @@ output:
         - { title: "人员实验", href: "user.Rmd", align: left }
         - { title: "权限管理", href: "permission.Rmd", align: left }
         - { title: "仪器管理", href: "instrument.Rmd", align: left }
+        - { title: "标本管理", href: "specimen.Rmd", align: left }
         - { title: "nCoV报告", href: "nCoV2.Rmd", align: left }
 runtime: shiny
 ---
@@ -48,18 +49,15 @@ Column {.sidebar data-width=350}
 最后更新日期：`r file.mtime("specimen.Rmd")`
 
 ```{r}
-TABLE = "Specimen"
+TABLE = "Label"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
 ## 主窗口表格内容
-mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`,
-                       specimenType `标本类型`,
-                       contactNumber `联系方式`, institution `送检单位`, originalNumber `原始编号`,
-                       collectDate `采集日期`, receiveDate `接受日期`,
-                       updatetime `更新日期`
-                 FROM `Specimen`
-                 ORDER BY `更新日期` DESC"
+mainTbl_sql <- "SELECT startNumber `起始编号`, serialLength `序列长度`, source `来源机构`,
+                       printDate `打印日期`, updatetime `更新日期`
+                 FROM `Label`
+                 ORDER BY `起始编号` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
@@ -71,54 +69,33 @@ textOutput("p")
 ```{r}
 useShinyjs(rmd=TRUE)
 
-textInput("specimenNumber", label = "标本编号")
+numericInput("startNumber", label = "起始编号", value = NA)
 
-textInput("name", label = "姓名")
+numericInput("serialLength", label = "序列长度", value = 1)
 
-textInput("gender", label = "性别")
-
-textInput("age", label = "年龄")
-
-selectInput("specimenType", label = "标本类型", choices = c("咽拭子", "鼻咽拭子", "手术组织", "穿刺组织", "全血",
-                                    "血浆", "血清", "尿液", "粪便", "分泌物", "呕吐物",
-                                    "唾液", "脑脊液", "淋巴液", "房水","其他"))
-
-selectInput("specimenStatus", label = "标本状态", choices = c("符合要求", "溶血", "污染", "损坏",
-                                                        "时间过久", "量较少"))
-
-textInput("medicalNumber", label = "病案号")
-
-textInput("institution", label = "送检单位")
+textInput("source", label = "来源机构")
 
 textInput("contactNumber", label = "联系电话")
 
-textInput("originalNumber", label = "原始编号")
-
-textInput("doctor", label = "送检医师")
-
-dateInput("collectDate", label = "采集日期", value = Sys.Date())
-
-dateInput("receiveDate", label = "接受日期", value = Sys.Date())
+dateInput("printDate", label = "接受日期", value = Sys.Date())
 
 actionButton("submit", label = "新增/更新")
 
-query_id <- "specimenNumber"
+query_id <- "startNumber"
 
-update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "contactNumber", "originalNumber", "doctor", "collectDate", "receiveDate")
+update_ary <- c("serialLength", "source", "contactNumber", "printDate")
 
 tags$span(" ")
 
 actionButton("delete", "删除")
-
-tags$span(" ")
-
-actionButton("clear", "清空")
 
 ## focus input element
 jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
 extendShinyjs(text = jscode)
 
 observeEvent(input$userKey, {
+  ## 打开时就focus在userKey输入框
+  js$refocus("userKey")
   # 查询用户permission
   if (grepl("^\\d+$", input$userKey)) {
     user_sql <- paste("SELECT u.`userKey`, u.`name` `name`, o.`chinese` `permission`, t.`name` tname, p.isValid
@@ -144,12 +121,12 @@ observeEvent(input$userKey, {
 
   if (rv$permission[["view"]] == TRUE) {
       output$mainTbl <- renderDT(rv$mainTbl, options =
-                                   list(pageLength = 15, autoWidth = TRUE, scrollX = TRUE), rownames= FALSE)
+                                   list(pageLength = 15, scrollX = TRUE), rownames= FALSE)
       output$logText <- renderPrint(rv$log_text)
       output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
-                                              group_by(`标本类型`) %>%
-                                              summarise(Num = length(`标本类型`)),
-                                            x = ~`标本类型`, y = ~`Num`, type = "bar"))
+                                              group_by(`来源机构`) %>%
+                                              summarise(Num = length(`来源机构`)),
+                                            x = ~`来源机构`, y = ~`Num`, type = "bar"))
   } else {
     output$mainTbl <- renderDT(tibble())
     output$logText <- renderPrint("")
@@ -171,7 +148,7 @@ observeEvent(input$userKey, {
   }
   
   if (rv$permission[["insert"]]) {
-    js$refocus("specimenNumber")
+    js$refocus("startNumber")
   }
 
 })
@@ -235,8 +212,7 @@ observeEvent(input$submit, {
     }
   )
   # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
-  inputs$collectDate <- ifelse(toString(input$collectDate) == "", "NULL", toString(input$collectDate))
-  inputs$receiveDate <- ifelse(toString(input$receiveDate) == "", "NULL", toString(input$receiveDate))
+  inputs$printDate <- ifelse(toString(input$printDate) == "", "NULL", toString(input$printDate))
   
   submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
   
