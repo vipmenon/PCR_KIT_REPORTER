@@ -40,7 +40,7 @@ dbSendQuery(mydb,"SET NAMES utf8")
 
 ```
 
-标本管理
+标签管理
 =====================================  
 
 Column {.sidebar data-width=350}
@@ -55,7 +55,7 @@ rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FA
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT startNumber `起始编号`, serialLength `序列长度`, source `来源机构`,
-                       printDate `打印日期`, updatetime `更新日期`
+                       contactNumber `联系电话`, printDate `打印日期`, updatetime `更新日期`
                  FROM `Label`
                  ORDER BY `起始编号` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
@@ -77,7 +77,7 @@ textInput("source", label = "来源机构")
 
 textInput("contactNumber", label = "联系电话")
 
-dateInput("printDate", label = "接受日期", value = Sys.Date())
+dateInput("printDate", label = "打印日期", value = Sys.Date())
 
 actionButton("submit", label = "新增/更新")
 

@@ -45,3 +45,9 @@ get_table_id <- function(con, table) {
   }
 }
 
+label_query <- function(con, specNum, returnKey = "source") {
+  # get source info from label table using specimen number
+  lbl_tbl <- as_tibble(DBI::dbReadTable(con, "Label"))
+  lbl_tbl %>% filter(`startNumber` <= as.integer(specNum), `startNumber` + `serialLength` > as.integer(specNum)) %>% pull(returnKey)
+}
+
