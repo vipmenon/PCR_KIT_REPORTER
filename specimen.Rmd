@@ -63,6 +63,8 @@ mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性
                  ORDER BY `更新日期` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
+inferDate <- as.Date(as.POSIXct(as.numeric(Sys.time()) - 3600*4, origin="1970-01-01"))
+
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
 ```
@@ -97,9 +99,9 @@ textInput("originalNumber", label = "原始编号")
 
 textInput("doctor", label = "送检医师")
 
-dateInput("collectDate", label = "采集日期", value = Sys.Date())
+dateInput("collectDate", label = "采集日期（注意是否隔日）", value = inferDate)
 
-dateInput("receiveDate", label = "接受日期", value = Sys.Date())
+dateInput("receiveDate", label = "接受日期（注意是否隔日）", value = inferDate)
 
 actionButton("submit", label = "新增/更新")
 

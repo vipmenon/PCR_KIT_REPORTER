@@ -51,3 +51,12 @@ label_query <- function(con, specNum, returnKey = "source") {
   lbl_tbl %>% filter(`startNumber` <= as.integer(specNum), `startNumber` + `serialLength` > as.integer(specNum)) %>% pull(returnKey)
 }
 
+observeSample <- function(con, testNumber, date, experimentNumber) {
+  o_sql <- paste("SELECT *
+                 FROM `Run`
+                 WHERE testNumber = '", testNumber, "'
+                 AND   date = '", date, "'
+                 AND   experimentNumber = '", experimentNumber, "'", sep = "")
+  dbGetQuery(con, o_sql)
+}
+

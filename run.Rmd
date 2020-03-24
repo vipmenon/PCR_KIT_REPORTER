@@ -24,7 +24,7 @@ library(shinyjs)
 library(plotly)
 source("share.R")
 
-killDbConnections()
+# killDbConnections()
 
 # operation id
 UPDATEID = 3
@@ -34,6 +34,9 @@ DELETEID = 4
 mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
                   password='lims', host='192.168.253.178', port=3306)
 dbSendQuery(mydb,"SET NAMES utf8")
+# __程序正在调试中，如遇错误请临时在Excel中登记实验号信息__
+# __有所不便，敬请谅解——xx 2020-xx-xx 9:00__
+
 ```
 
 实验上机
@@ -46,8 +49,10 @@ Column {.sidebar data-width=350}
 
 ```{r}
 TABLE = "Run"
+DEFAULT_TEST = "P04"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
+                     reportStatus = "",
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT r.id `记录号`, t.title `检测项目`, date `实验日期`, experimentNumber `实验号`,
@@ -59,6 +64,14 @@ mainTbl_sql <- "SELECT r.id `记录号`, t.title `检测项目`, date `实验日
                  LEFT JOIN `User` u on u.userKey = r.userId
                 ORDER BY `记录号` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+
+# 实验初始号
+startExpNum <- 1
+repeat {
+  run_start <- observeSample(mydb, DEFAULT_TEST, toString(Sys.Date()), startExpNum)
+  if (nrow(run_start) == 1) startExpNum <- as.integer(run_start$experimentNumber[1]) + 1
+  else break
+}
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -73,11 +86,11 @@ numericInput("id", label = "记录编号（新增记录时此处留空）", valu
 
 selectInput("testNumber", label = "检测项目",
             choices = get_select_list(mydb, "`Test`", "title", "testNumber"),
-            selected = "P04")
+            selected = DEFAULT_TEST)
 
 dateInput("date", label = "实验日期", value = Sys.Date())
 
-textInput("experimentNumber", label = "实验号")
+textInput("experimentNumber", label = "实验号", value = startExpNum)
 
 textInput("specimenNumber", label = "样本编号")
 
@@ -85,9 +98,15 @@ textInput("specimenName", label = "样本姓名")
 
 selectInput("userId", label = "实验员", choices = get_user_list(mydb))
 
+renderText(rv$reportStatus)
+
+tags$hr()
+
 actionButton("submit", label = "新增/更新")
 
 query_id <- "id" ## primary id
+
+clear_ary <- c("experimentNumber", "specimenNumber")
 
 update_ary <- c("testNumber", "date", "experimentNumber", "specimenNumber", "userId")
 
@@ -192,6 +211,12 @@ observeEvent(input[[query_id]], {
                         filter(get(query_id) == input[[query_id]]) %>%
                         pull(field))
       }
+    # } else {
+    #   for (field in clear_ary) {
+    #     updateTextInput(session, field, value = rv$table %>%
+    #                     filter(get(query_id) == input[[query_id]]) %>%
+    #                     pull(field))
+    #   }
     }
   }
 })
@@ -204,28 +229,22 @@ observeEvent(input$specimenNumber, {
   }
 })
 
-observeSample <- function(testNumber, date, experimentNumber) {
-  o_sql <- paste("SELECT id, specimenNumber, userId
-                 FROM `Run`
-                 WHERE testNumber = '", testNumber, "'
-                 AND   date = '", date, "'
-                 AND   experimentNumber = '", experimentNumber, "'", sep = "")
-  dbGetQuery(mydb, o_sql)
-}
-
-observeEvent({input$testNumber; input$date}, {
-  if (input$testNumber != "") {
-    updateTextInput(session, "experimentNumber", value = get_exp_num(input$testNumber, toString(input$date)))
-  }
-})
+# observeEvent({input$testNumber; input$date}, {
+#   if (input$testNumber != "") {
+#     updateTextInput(session, "experimentNumber", value = get_exp_num(input$testNumber, toString(input$date)))
+#   }
+# })
 
 observeEvent({input$testNumber; input$date; input$experimentNumber}, {
   # 根据实验号、日期、检测项目反查记录号、实验员、标本号
-  os <- observeSample(input$testNumber, toString(input$date), input$experimentNumber)
+  os <- observeSample(mydb, input$testNumber, toString(input$date), input$experimentNumber)
   if (nrow(os) == 1) {
-    updateTextInput(session, "id", value = os$id[1])
-    updateTextInput(session, "specimenNumber", value = os$specimenNumber[1])
-    updateSelectInput(session, "userId", selected = os$userId[1])
+    # updateTextInput(session, "id", value = os$id[1])
+    # updateTextInput(session, "specimenNumber", value = os$specimenNumber[1])
+    # updateSelectInput(session, "userId", selected = os$userId[1])
+    rv$reportStatus = paste0("【已存在】实验号：", os$experimentNumber[1], "，样本号：", os$specimenNumber[1])
+  } else {
+    rv$reportStatus = ""
   }
 })
 
@@ -324,17 +343,23 @@ observeEvent(input$delete, {
     rv$log_text <- get_log(TABLE)
     rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
     rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+    
+    updateTextInput(session, "id", value = NA)
   }
 })
 
 observeEvent(input$clear, {
-  if ( !is.na(as.integer(input$experimentNumber)) ) {
-    updateTextInput(session, "experimentNumber", value = as.integer(input$experimentNumber) + 1)
+  if ( input$experimentNumber != "" ) {
+    lastExpNum <- isolate(as.integer(input$experimentNumber))
   }
   updateTextInput(session, "specimenNumber", value = "")
   updateTextInput(session, "specimenName", value = "")
   updateTextInput(session, "id", value = NA)
+  updateDateInput(session, "date", value = Sys.Date())
+  # updateTextInput(session, "userId", value = input$userKey)
 
+  updateTextInput(session, "experimentNumber", value = lastExpNum + 1)
+  
   ## 清空完focus在样本编号输入框
   js$refocus("specimenNumber")
   
