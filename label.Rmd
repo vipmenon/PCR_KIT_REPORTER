@@ -60,6 +60,13 @@ mainTbl_sql <- "SELECT startNumber `起始编号`, serialLength `序列长度`, 
                  ORDER BY `起始编号` DESC"
 rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
 
+# infer start number
+inferNumber = isolate(rv$table %>% filter(startNumber == max(startNumber)) %>% mutate(inferNumber = startNumber + serialLength) %>% pull(inferNumber))
+sysdate <- format(Sys.Date(), "%y%m")
+if (substr(inferNumber, 1, 4) != sysdate) {
+  inferNumber = paste0(sysdate, '0001') %>% as.integer()
+}
+
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
 ```
@@ -69,7 +76,7 @@ textOutput("p")
 ```{r}
 useShinyjs(rmd=TRUE)
 
-numericInput("startNumber", label = "起始编号", value = NA)
+numericInput("startNumber", label = "起始编号", value = inferNumber)
 
 numericInput("serialLength", label = "序列长度", value = 1)
 

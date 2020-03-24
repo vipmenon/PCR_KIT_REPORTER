@@ -51,10 +51,10 @@ CT_CUTOFF = list(Liferiver_p = 43, Liferiver_h = 43, Biogerm_p = 38)
 # 中英模板
 report_template_pos <- list(Liferiver_p = "report/nCoV_template8.docx",
                             Liferiver_h = "report/nCoV_template3.docx",
-                            Biogerm_p = "report/nCoV_template9z.docx")
+                            Biogerm_p = "report/nCoV_template10.docx")
 report_template_neg <- list(Liferiver_p = "report/nCoV_template8.docx",
                             Liferiver_h = "report/nCoV_template4.docx",
-                            Biogerm_p = "report/nCoV_template9z.docx")
+                            Biogerm_p = "report/nCoV_template10.docx")
 
 ```
 

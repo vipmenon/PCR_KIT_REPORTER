@@ -1,3 +1,6 @@
+## v2.21
+- specimen module: try use label module to inspect institution and contact number once no records in specimen table
+
 ## v2.2
 
 - add label module, recode label info when labels are printed

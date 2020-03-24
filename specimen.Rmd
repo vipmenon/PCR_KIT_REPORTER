@@ -11,6 +11,7 @@ output:
         - { title: "人员实验", href: "user.Rmd", align: left }
         - { title: "权限管理", href: "permission.Rmd", align: left }
         - { title: "仪器管理", href: "instrument.Rmd", align: left }
+        - { title: "标签管理", href: "label.Rmd", align: left }
         - { title: "nCoV报告", href: "nCoV2.Rmd", align: left }
 runtime: shiny
 ---
@@ -26,7 +27,7 @@ library(plotly)
 library(RMySQL)
 source("share.R")
 
-killDbConnections()
+# killDbConnections()
 
 # operation id
 UPDATEID = 3
@@ -53,10 +54,10 @@ TABLE = "Specimen"
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
 ## 主窗口表格内容
-mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`,
+mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`, age `年龄`,
                        specimenType `标本类型`,
                        contactNumber `联系方式`, institution `送检单位`, originalNumber `原始编号`,
-                       collectDate `采集日期`, receiveDate `接受日期`,
+                       collectDate `采集日期`,
                        updatetime `更新日期`
                  FROM `Specimen`
                  ORDER BY `更新日期` DESC"
@@ -75,7 +76,7 @@ textInput("specimenNumber", label = "标本编号")
 
 textInput("name", label = "姓名")
 
-textInput("gender", label = "性别")
+selectInput("gender", label = "性别", choices = c("女", "男", "-"))
 
 textInput("age", label = "年龄")
 
@@ -300,7 +301,7 @@ observeEvent(input$delete, {
 
 observeEvent(input$clear, {
 
-  updateTextInput(session, "specimenNumber", value = "")
+  updateTextInput(session, "specimenNumber", value = as.integer(input$specimenNumber) + 1)
 
   ## 清空完focus在样本编号输入框
   js$refocus("specimenNumber")
@@ -324,9 +325,7 @@ Column {data-width=200}
 ### 操作日志
 
 ```{r}
-renderPrint(input$institution)
 verbatimTextOutput("logText")
-
 ```
 
 ### 汇总计数
@@ -334,4 +333,3 @@ verbatimTextOutput("logText")
 ```{r}
 plotlyOutput("chartA")
 ```
-
