@@ -56,7 +56,7 @@ rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FA
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`, age `年龄`,
                        specimenType `标本类型`,
-                       contactNumber `联系方式`, institution `送检单位`, originalNumber `原始编号`,
+                       contactNumber `联系方式`, institution `送检单位`,
                        collectDate `采集日期`,
                        updatetime `更新日期`
                  FROM `Specimen`
@@ -149,7 +149,7 @@ observeEvent(input$userKey, {
 
   if (rv$permission[["view"]] == TRUE) {
       output$mainTbl <- renderDT(rv$mainTbl, options =
-                                   list(pageLength = 15, autoWidth = TRUE, scrollX = TRUE), rownames= FALSE)
+                                   list(pageLength = 15, scrollX = TRUE), rownames= FALSE)
       output$logText <- renderPrint(rv$log_text)
       output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
                                               group_by(`标本类型`) %>%

@@ -117,9 +117,9 @@ dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
 userNames <- get_select_list(mydb, "`User`", "name", "userKey")
 
-selectInput("tester", label = "检测员", choices = userNames, selected = 882287)
+selectInput("tester", label = "检测员", choices = userNames, selected = 366169)
 
-selectInput("checker", label = "审核员", choices = userNames, selected = 366169)
+selectInput("checker", label = "审核员", choices = userNames, selected = 138869)
 
 selectInput("isRerun", label = "是否是重分析", choices = list("是" = 1, "否" = 0), selected = 0)
 

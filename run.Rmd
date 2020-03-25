@@ -56,7 +56,7 @@ rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FA
                      table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT r.id `记录号`, t.title `检测项目`, date `实验日期`, experimentNumber `实验号`,
-                s.specimenNumber `标本编号`, s.name `标本姓名`,
+                r.specimenNumber `标本编号`, s.name `标本姓名`,
                 u.name `实验员姓名`, r.updatetime `更新时间`
                  FROM `Run` r
                  LEFT JOIN `Test` t on t.testNumber = r.testNumber
