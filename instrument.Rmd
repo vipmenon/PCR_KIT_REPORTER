@@ -22,15 +22,7 @@ library(dplyr)
 library(tibble)
 library(shinyjs)
 library(plotly)
-
-# operation id
-UPDATEID = 3
-INSERTID = 2
-DELETEID = 4
-
-mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
-                  password='lims', host='192.168.253.178', port=3306)
-dbSendQuery(mydb,"SET NAMES utf8")
+source("share.R")
 
 ```
 
@@ -48,7 +40,7 @@ TABLE = "Instrument"
 userKeys <- tibble(userKey = 7661L, permission = c("查询","新增","更新","删除"))
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
-                     instruments = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+                     instruments = limsdbReadTable(TABLE))
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -88,7 +80,7 @@ observeEvent(input$userKey, {
                 WHERE t.`name` = '", TABLE, "'
                 AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
-    rv$user <- dbGetQuery(mydb, user_sql)
+    rv$user <- limsdbGetQuery(user_sql)
   } else {
     rv$user <- tibble(userKey = integer(), permission = character())
   }
@@ -169,7 +161,7 @@ observeEvent(input$instrumentId,{
 get_table_id <- function(table) {
   # get table id using table name
   table_sql <- paste("SELECT `id` FROM `Table` WHERE `name` = '", table, "'", sep = "")
-  table_rv <- dbGetQuery(mydb, table_sql)
+  table_rv <- limsdbGetQuery(table_sql)
   if (nrow(table_rv) == 0) {
     stop("Table not found!")
   } else {
@@ -178,20 +170,6 @@ get_table_id <- function(table) {
 }
 
 # 日志记录查询
-
-get_log <- function(table) {
-  log_sql <- paste("SELECT u.name name, o.chinese operation, t.chinese `table`, recordId, `timestamp` `time`
-  FROM Log l
-  LEFT JOIN `User` u on u.userKey = l.userKey
-  LEFT JOIN `Operation` o on l.operationId = o.id
-  LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'
-  ORDER BY `timestamp` DESC", sep = "")
-  
-  log_tbl <- dbGetQuery(mydb, log_sql)
-  
-  paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
-}
 
 rv$log_text <- get_log(TABLE)
 
@@ -212,7 +190,7 @@ observeEvent(input$submit, {
           dateCommissioned = '", dateCommissioned, "',
           dateDecommissioned = '", dateDecommissioned, "'", sep = "")
   insert_sql <- gsub("'NULL'", "NULL", insert_sql)
-  rv$sql_exe <- dbExecute(mydb, insert_sql)
+  rv$sql_exe <- limsdbExecute(insert_sql)
   
   # 添加日志
   
@@ -224,17 +202,17 @@ observeEvent(input$submit, {
                   input$instrumentId, sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
-  dbExecute(mydb, log_ins_sql)
+  limsdbExecute(log_ins_sql)
   rv$log_text <- get_log(TABLE)
   
-  rv$instruments <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$instruments <- limsdbReadTable(TABLE)
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
   delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `instrumentId` = ", input$instrumentId, sep = "")
-  rv$sql_exe <- dbExecute(mydb, delete_sql)
+  rv$sql_exe <- limsdbExecute(delete_sql)
   
   # 添加日志
   
@@ -242,10 +220,10 @@ observeEvent(input$delete, {
                 input$instrumentId, sep = ", ")
 
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
-  dbExecute(mydb, log_ins_sql)
+  limsdbExecute(log_ins_sql)
   rv$log_text <- get_log(TABLE)
   
-  rv$instruments <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$instruments <- limsdbReadTable(TABLE)
   
 })
 

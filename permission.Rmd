@@ -66,11 +66,11 @@ useShinyjs(rmd=TRUE)
 
 numericInput("id", label = "记录编号", value = NA, min = 1)
 
-selectInput("userId", label = "姓名", choices = get_select_list(mydb, "`User`", "name", "userKey"))
+selectInput("userId", label = "姓名", choices = get_user_list())
 
-selectInput("tableId", label = "管理模块", choices = get_select_list(mydb, "`Table`", "chinese", "id"))
+selectInput("tableId", label = "管理模块", choices = get_select_list("`Table`", "chinese", "id"))
 
-selectInput("operationId", label = "操作类别", choices = get_select_list(mydb, "`Operation`", "chinese", "id"))
+selectInput("operationId", label = "操作类别", choices = get_select_list("`Operation`", "chinese", "id"))
 
 selectInput("isValid", label = "是否有效", choices = list("是" = 1, "否" = 0))
 
@@ -95,7 +95,7 @@ observeEvent(input$userKey, {
                 WHERE t.`name` = '", TABLE, "'
                 AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
-    rv$user <- dbGetQuery(mydb, user_sql)
+    rv$user <- limsdbGetQuery(user_sql)
   } else {
     rv$user <- tibble(userKey = integer(), permission = character())
   }
@@ -164,24 +164,6 @@ get_table_id <- function(table) {
 }
 
 # 日志记录查询
-
-get_log <- function(table) {
-  log_sql <- paste("SELECT u.name name, o.chinese operation, t.chinese `table`, recordId, `timestamp` `time`
-  FROM Log l
-  LEFT JOIN `User` u on u.userKey = l.userKey
-  LEFT JOIN `Operation` o on l.operationId = o.id
-  LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'
-  ORDER BY `timestamp` DESC", sep = "")
-  
-  log_tbl <- dbGetQuery(mydb, log_sql)
-  
-  if (nrow(log_tbl) > 0) {
-    paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
-  } else {
-    return("无操作记录")
-  }
-}
 
 rv$log_text <- get_log(TABLE)
 

@@ -1,3 +1,6 @@
+## v2.30 2020-3-25
+- fix bugs when 16 connections was reached.
+
 ## v2.21
 - specimen module: try use label module to inspect institution and contact number once no records in specimen table
 

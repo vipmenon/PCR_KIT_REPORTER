@@ -34,10 +34,6 @@ UPDATEID = 3
 INSERTID = 2
 DELETEID = 4
 
-mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
-                  password='lims', host='192.168.253.178', port=3306)
-dbSendQuery(mydb,"SET NAMES utf8")
-
 ```
 
 标本管理
@@ -52,7 +48,7 @@ Column {.sidebar data-width=350}
 TABLE = "Specimen"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
-                     table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+                     table = limsdbReadTable(TABLE))
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`, age `年龄`,
                        specimenType `标本类型`,
@@ -61,7 +57,7 @@ mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性
                        updatetime `更新日期`
                  FROM `Specimen`
                  ORDER BY `更新日期` DESC"
-rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
 
 inferDate <- as.Date(as.POSIXct(as.numeric(Sys.time()) - 3600*4, origin="1970-01-01"))
 
@@ -134,7 +130,7 @@ observeEvent(input$userKey, {
                 WHERE t.`name` = '", TABLE, "'
                 AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
-    rv$user <- dbGetQuery(mydb, user_sql)
+    rv$user <- limsdbGetQuery(user_sql)
   } else {
     rv$user <- tibble(userKey = integer(), permission = character())
   }
@@ -191,9 +187,9 @@ observeEvent(input[[query_id]],{
       if (rv$table %>% filter(get(query_id) == input[[query_id]]) %>% nrow == 0) {
         # try use label module to inspect institution and contact number once no records in specimen table
         updateTextInput(session, "institution",
-                      value = label_query(mydb, specNum = input[[query_id]], returnKey = "source"))
+                      value = label_query(specNum = input[[query_id]], returnKey = "source"))
         updateTextInput(session, "contactNumber",
-                      value = label_query(mydb, specNum = input[[query_id]], returnKey = "contactNumber"))
+                      value = label_query(specNum = input[[query_id]], returnKey = "contactNumber"))
       }
     }
   } else {
@@ -205,7 +201,7 @@ observeEvent(input[[query_id]],{
 get_table_id <- function(table) {
   # get table id using table name
   table_sql <- paste("SELECT `id` FROM `Table` WHERE `name` = '", table, "'", sep = "")
-  table_rv <- dbGetQuery(mydb, table_sql)
+  table_rv <- limsdbGetQuery(table_sql)
   if (nrow(table_rv) == 0) {
     stop("Table not found!")
   } else {
@@ -214,24 +210,6 @@ get_table_id <- function(table) {
 }
 
 # 日志记录查询
-
-get_log <- function(table) {
-  log_sql <- paste("SELECT u.name name, o.chinese operation, t.chinese `table`, recordId, `timestamp` `time`
-  FROM Log l
-  LEFT JOIN `User` u on u.userKey = l.userKey
-  LEFT JOIN `Operation` o on l.operationId = o.id
-  LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'
-  ORDER BY `timestamp` DESC", sep = "")
-  
-  log_tbl <- dbGetQuery(mydb, log_sql)
-  
-  if (nrow(log_tbl) > 0) {
-    paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
-  } else {
-    return("无操作记录")
-  }
-}
 
 rv$log_text <- get_log(TABLE)
 
@@ -256,7 +234,7 @@ observeEvent(input$submit, {
                       paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
 
   insert_sql <- gsub("'NULL'", "NULL", insert_sql)
-  rv$sql_exe <- dbExecute(mydb, insert_sql)
+  rv$sql_exe <- limsdbExecute(insert_sql)
   
   # 添加日志
   
@@ -271,19 +249,19 @@ observeEvent(input$submit, {
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
 
-  dbExecute(mydb, log_ins_sql)
+  limsdbExecute(log_ins_sql)
 
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
+  rv$table <- limsdbReadTable(TABLE)
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
   delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
-  rv$sql_exe <- dbExecute(mydb, delete_sql)
+  rv$sql_exe <- limsdbExecute(delete_sql)
 
   # 添加日志
 
@@ -293,12 +271,12 @@ observeEvent(input$delete, {
 
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
 
-  dbExecute(mydb, log_ins_sql)
+  limsdbExecute(log_ins_sql)
   
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
+  rv$table <- limsdbReadTable(TABLE)
 })
 
 observeEvent(input$clear, {
@@ -315,7 +293,7 @@ observeEvent(input$clear, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 项目列表
+### 标本列表
 
 ```{r}
 DT::dataTableOutput("mainTbl")

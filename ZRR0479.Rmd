@@ -97,7 +97,7 @@ fileInput("qdx_xlsx", label = "选择QDx PCR导出Excel文件",
 
 dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
-userNames <- get_select_list(mydb, "`User`", "name", "userKey")
+userNames <- get_select_list("`User`", "name", "userKey")
 
 selectInput("tester", label = "检测员", choices = userNames, selected = 277895)
 

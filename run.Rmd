@@ -10,6 +10,7 @@ output:
         - { title: "检测管理", href: "test.Rmd", align: left }
         - { title: "人员实验", href: "user.Rmd", align: left }
         - { title: "权限管理", href: "permission.Rmd", align: left }
+        - { title: "标签管理", href: "label.Rmd", align: left }
         - { title: "仪器管理", href: "instrument.Rmd", align: left }
 runtime: shiny
 ---
@@ -24,16 +25,11 @@ library(shinyjs)
 library(plotly)
 source("share.R")
 
-# killDbConnections()
-
 # operation id
 UPDATEID = 3
 INSERTID = 2
 DELETEID = 4
 
-mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
-                  password='lims', host='192.168.253.178', port=3306)
-dbSendQuery(mydb,"SET NAMES utf8")
 # __程序正在调试中，如遇错误请临时在Excel中登记实验号信息__
 # __有所不便，敬请谅解——xx 2020-xx-xx 9:00__
 
@@ -53,7 +49,7 @@ DEFAULT_TEST = "P04"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
                      reportStatus = "",
-                     table = as_tibble(DBI::dbReadTable(mydb, TABLE)))
+                     table = limsdbReadTable(TABLE))
 ## 主窗口表格内容
 mainTbl_sql <- "SELECT r.id `记录号`, t.title `检测项目`, date `实验日期`, experimentNumber `实验号`,
                 r.specimenNumber `标本编号`, s.name `标本姓名`,
@@ -63,12 +59,12 @@ mainTbl_sql <- "SELECT r.id `记录号`, t.title `检测项目`, date `实验日
                  LEFT JOIN `Specimen` s on s.specimenNumber = r.specimenNumber
                  LEFT JOIN `User` u on u.userKey = r.userId
                 ORDER BY `记录号` DESC"
-rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
+rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
 
 # 实验初始号
 startExpNum <- 1
 repeat {
-  run_start <- observeSample(mydb, DEFAULT_TEST, toString(Sys.Date()), startExpNum)
+  run_start <- observeSample(DEFAULT_TEST, toString(Sys.Date()), startExpNum)
   if (nrow(run_start) == 1) startExpNum <- as.integer(run_start$experimentNumber[1]) + 1
   else break
 }
@@ -85,7 +81,7 @@ useShinyjs(rmd=TRUE)
 numericInput("id", label = "记录编号（新增记录时此处留空）", value = NA, min = 1)
 
 selectInput("testNumber", label = "检测项目",
-            choices = get_select_list(mydb, "`Test`", "title", "testNumber"),
+            choices = get_select_list("`Test`", "title", "testNumber"),
             selected = DEFAULT_TEST)
 
 dateInput("date", label = "实验日期", value = Sys.Date())
@@ -96,7 +92,7 @@ textInput("specimenNumber", label = "样本编号")
 
 textInput("specimenName", label = "样本姓名")
 
-selectInput("userId", label = "实验员", choices = get_user_list(mydb))
+selectInput("userId", label = "实验员", choices = get_user_list())
 
 renderText(rv$reportStatus)
 
@@ -112,8 +108,8 @@ update_ary <- c("testNumber", "date", "experimentNumber", "specimenNumber", "use
 
 hide_ary <- c("testNumber", "date", "experimentNumber", "specimenNumber", "userId", "specimenName")
 
-specimenName_lst <- get_select_list(mydb, "`Specimen`", "specimenNumber", "name")
-userName_lst <- get_select_list(mydb, "`User`", "userKey", "name")
+specimenName_lst <- get_select_list("`Specimen`", "specimenNumber", "name")
+userName_lst <- get_select_list("`User`", "userKey", "name")
 
 tags$span(" ")
 
@@ -132,7 +128,7 @@ get_exp_num <- function(testNumber, date) {
             FROM Run
             WHERE testNumber = '", testNumber, "'
             AND date = '", date, "'", sep = "")
-  en_rv <- dbGetQuery(mydb, en_sql)
+  en_rv <- limsdbGetQuery(en_sql)
   if (is.na(en_rv)) {
     return(1)
   } else {
@@ -154,7 +150,7 @@ observeEvent(input$userKey, {
                 WHERE t.`name` = '", TABLE, "'
                 AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
-    rv$user <- dbGetQuery(mydb, user_sql)
+    rv$user <- limsdbGetQuery(user_sql)
   } else {
     rv$user <- tibble(userKey = integer(), permission = character())
   }
@@ -229,15 +225,9 @@ observeEvent(input$specimenNumber, {
   }
 })
 
-# observeEvent({input$testNumber; input$date}, {
-#   if (input$testNumber != "") {
-#     updateTextInput(session, "experimentNumber", value = get_exp_num(input$testNumber, toString(input$date)))
-#   }
-# })
-
 observeEvent({input$testNumber; input$date; input$experimentNumber}, {
   # 根据实验号、日期、检测项目反查记录号、实验员、标本号
-  os <- observeSample(mydb, input$testNumber, toString(input$date), input$experimentNumber)
+  os <- observeSample(input$testNumber, toString(input$date), input$experimentNumber)
   if (nrow(os) == 1) {
     # updateTextInput(session, "id", value = os$id[1])
     # updateTextInput(session, "specimenNumber", value = os$specimenNumber[1])
@@ -250,29 +240,15 @@ observeEvent({input$testNumber; input$date; input$experimentNumber}, {
 
 # 日志记录查询
 
-get_log <- function(table) {
-  log_sql <- paste("SELECT u.name name, o.chinese operation, t.chinese `table`, recordId, `timestamp` `time`
-  FROM Log l
-  LEFT JOIN `User` u on u.userKey = l.userKey
-  LEFT JOIN `Operation` o on l.operationId = o.id
-  LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'
-  ORDER BY `timestamp` DESC", sep = "")
-  
-  log_tbl <- dbGetQuery(mydb, log_sql)
-  
-  if (nrow(log_tbl) > 0) {
-    paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
-  } else {
-    return("无操作记录")
-  }
-}
-
 rv$log_text <- get_log(TABLE)
 
 ## 新增与更新
 
 observeEvent(input$submit, {
+  conn <- do.call(DBI::dbConnect, dbargs)
+  dbSendQuery(conn,"SET NAMES utf8")
+  on.exit(DBI::dbDisconnect(conn))
+  
   ## Single-bracket indexing of reactivevalues object is not allowed.
   ## So isolate it first
   inputs <- isolate(reactiveValuesToList(input))
@@ -294,26 +270,26 @@ observeEvent(input$submit, {
   insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE ",
                       paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
   insert_sql <- gsub("'NULL'", "NULL", insert_sql)
-  rv$sql_exe <- dbExecute(mydb, insert_sql)
+  rv$sql_exe <- dbExecute(conn, insert_sql)
 
   # 添加日志
   
   if (input[[query_id]] %in% rv$table[[query_id]]) {
-    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), UPDATEID,
+    log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
   } else {
-    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), INSERTID,
+    log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
                   'LAST_INSERT_ID()',
                   sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
-  dbExecute(mydb, log_ins_sql)
+  dbExecute(conn, log_ins_sql)
   
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
+  rv$table <- limsdbReadTable(TABLE)
   
   # 如果记录编号为空，则更新自动生成的记录编号，方便接着更新/删除这条记录
   if (inputs[query_id] == 0) {
@@ -328,21 +304,21 @@ observeEvent(input$submit, {
 observeEvent(input$delete, {
   if (input[[query_id]] %in% rv$table[[query_id]]) {
     delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
-    rv$sql_exe <- dbExecute(mydb, delete_sql)
+    rv$sql_exe <- limsdbExecute(delete_sql)
     
     # 添加日志
     
-    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), DELETEID,
+    log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
                     paste("'", input[[query_id]] ,"'", sep = ""),
                     sep = ", ")
   
     log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
-    dbExecute(mydb, log_ins_sql)
+    limsdbExecute(log_ins_sql)
     
     ## 刷新主表格内容
     rv$log_text <- get_log(TABLE)
-    rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-    rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+    rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
+    rv$table <- limsdbReadTable(TABLE)
     
     updateTextInput(session, "id", value = NA)
   }
@@ -370,7 +346,7 @@ observeEvent(input$clear, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 权限列表
+### 实验列表
 
 ```{r}
 DT::dataTableOutput("mainTbl")

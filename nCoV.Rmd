@@ -26,12 +26,6 @@ library(plotly)
 library(officer)
 library(RMySQL)  
 source("share.R")
-
-killDbConnections()
-
-mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
-                  password='lims', host='192.168.253.178', port=3306)
-dbSendQuery(mydb,"SET NAMES utf8")
 ```
 
 2019-nCoV检测报告（测试）
@@ -46,8 +40,8 @@ Column {.sidebar data-width=350}
 TABLE = "nCoV"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
-                     table = as_tibble(DBI::dbReadTable(mydb, TABLE)),
-                     spe_tbl = as_tibble(DBI::dbReadTable(mydb, "Specimen")))
+                     table = limsdbReadTable(TABLE),
+                     spe_tbl = limsdbReadTable("Specimen"))
 
 passwordInput("userKey", label = "用户钥匙", value = NA)
 textOutput("p")
@@ -75,7 +69,7 @@ dateInput("testDate", label = "检测日期", value = Sys.Date())
 
 dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
-userNames <- get_select_list(mydb, "`User`", "name", "userKey")
+userNames <- get_select_list("`User`", "name", "userKey")
 
 selectInput("tester", label = "检测员", choices = userNames)
 
@@ -147,7 +141,7 @@ observeEvent(input$userKey, {
                 WHERE t.`name` = '", TABLE, "'
                 AND u.isValid = 1
                 AND u.`userKey` = ", input$userKey, sep = "")
-    rv$user <- dbGetQuery(mydb, user_sql)
+    rv$user <- limsdbGetQuery(user_sql)
   } else {
     rv$user <- tibble(userKey = integer(), permission = character())
   }
@@ -219,24 +213,6 @@ observeEvent(input[["specimenNumber"]], {
 
 # 日志记录查询
 
-get_log <- function(table) {
-  log_sql <- paste("SELECT u.name name, o.chinese operation, t.chinese `table`, recordId, `timestamp` `time`
-  FROM Log l
-  LEFT JOIN `User` u on u.userKey = l.userKey
-  LEFT JOIN `Operation` o on l.operationId = o.id
-  LEFT JOIN `Table` t on l.tableId = t.id
-  WHERE t.name = '", table, "'
-  ORDER BY `timestamp` DESC", sep = "")
-  
-  log_tbl <- dbGetQuery(mydb, log_sql)
-  
-  if (nrow(log_tbl) > 0) {
-    paste(log_tbl$name, "于", log_tbl$time, "在", log_tbl$table, "中", log_tbl$operation, "了第", log_tbl$recordId,"号记录", sep = "")
-  } else {
-    return("无操作记录")
-  }
-}
-
 rv$log_text <- get_log(TABLE)
 
 # 新增与更新
@@ -260,49 +236,49 @@ observeEvent(input$submit, {
                       paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
 
   insert_sql <- gsub("'NULL'", "NULL", insert_sql)
-  rv$sql_exe <- dbExecute(mydb, insert_sql)
+  rv$sql_exe <- limsdbExecute(insert_sql)
   
   # 添加日志
   
   if (input[[query_id]] %in% rv$table[[query_id]]) {
-    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), UPDATEID,
+    log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
   } else {
-    log_values <- paste(input$userKey, get_table_id(mydb, TABLE), INSERTID,
+    log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
   }
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
 
-  dbExecute(mydb, log_ins_sql)
+  limsdbExecute(log_ins_sql)
 
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
   # rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$table <- limsdbReadTable(TABLE)
 })
 
 # 删除记录
 
 observeEvent(input$delete, {
   delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
-  rv$sql_exe <- dbExecute(mydb, delete_sql)
+  rv$sql_exe <- limsdbExecute(delete_sql)
 
   # 添加日志
 
-  log_values <- paste(input$userKey, get_table_id(mydb, TABLE), DELETEID,
+  log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
                   paste("'", input[[query_id]] ,"'", sep = ""),
                   sep = ", ")
 
   log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
 
-  dbExecute(mydb, log_ins_sql)
+  limsdbExecute(log_ins_sql)
   
   ## 刷新主表格内容
   rv$log_text <- get_log(TABLE)
   # rv$mainTbl <- dbGetQuery(mydb, mainTbl_sql)
-  rv$table <- as_tibble(DBI::dbReadTable(mydb, TABLE))
+  rv$table <- limsdbReadTable(TABLE)
 })
 
 ```

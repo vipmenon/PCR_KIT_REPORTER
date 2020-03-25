@@ -31,12 +31,6 @@ library(officer)
 library(ggplot2)
 source("share.R")
 
-killDbConnections()
-
-mydb <- dbConnect(RMySQL::MySQL(), dbname='BEAGLE_LIMS', username='lims',
-                  password='lims', host='192.168.253.178', port=3306)
-dbSendQuery(mydb,"SET NAMES utf8")
-
 addResourcePath("www", "www")
 
 POS_CTRL = 'p'
@@ -70,9 +64,9 @@ Column {.sidebar data-width=1000}
 ```{r}
 
 rv <- reactiveValues(specimenMatrix = matrix(),
-                     speTbl = as_tibble(DBI::dbReadTable(mydb, 'Specimen')),
-                     runTbl = as_tibble(DBI::dbReadTable(mydb, 'Run')),
-                     nCoVTbl = as_tibble(DBI::dbReadTable(mydb, 'nCoV')),
+                     speTbl = limsdbReadTable('Specimen')),
+                     runTbl = limsdbReadTable('Run')),
+                     nCoVTbl = limsdbReadTable('nCoV')),
                      reportStatus = "",
                      dir = paste0("report/", format(Sys.time(), "%Y%m%d%H%M")))
 
@@ -115,7 +109,7 @@ fileInput("qdx_xlsx", label = "选择QDx PCR导出Excel文件",
 
 dateInput("reportDate", label = "报告日期", value = Sys.Date())
 
-userNames <- get_select_list(mydb, "`User`", "name", "userKey")
+userNames <- get_select_list("`User`", "name", "userKey")
 
 selectInput("tester", label = "检测员", choices = userNames, selected = 366169)
 
@@ -425,7 +419,7 @@ observeEvent(input$submit, {
                                     checker = '", input$checker, "',
                                     updatetime = NOW()")
                   print(ins_sql)
-                  dbExecute(mydb, ins_sql)
+                  limsdbExecute(ins_sql)
                   
                   incProgress(1/length(samples), specimenNumber)
                 }
