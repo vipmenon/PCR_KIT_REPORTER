@@ -27,13 +27,6 @@ library(plotly)
 library(RMySQL)
 source("share.R")
 
-# killDbConnections()
-
-# operation id
-UPDATEID = 3
-INSERTID = 2
-DELETEID = 4
-
 ```
 
 标本管理
@@ -293,7 +286,7 @@ observeEvent(input$clear, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 标本列表
+### 标本列表（本表内容保密）
 
 ```{r}
 DT::dataTableOutput("mainTbl")

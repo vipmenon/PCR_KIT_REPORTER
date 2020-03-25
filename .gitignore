@@ -4,3 +4,4 @@
 .Ruserdata
 report/**
 !report/*.docx
+mysqldump

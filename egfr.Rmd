@@ -30,6 +30,7 @@ library(stringr)
 # NEG_CTRL = 'n'
 Sample = 1
 `NA` = 1
+SKIPROWS = 34
 
 CT_CUTOFF = list(HW_EGFR = list(`L858R`=c(12,14), `19DEL`=c(8,11),
                                 `T790M`=c(10,12), `L861Q`=c(12,15),
@@ -107,7 +108,7 @@ tbl_res <- reactive({
            `Target Name` = character(),	Task = character(),
            Reporter = character(),	Quencher = character(),	CT = numeric())
   } else {
-    read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = 40)
+    read_excel(input$qdx_xlsx$datapath, sheet = "Results", skip = SKIPROWS)
   }
 })
 
@@ -127,7 +128,7 @@ tbl_amp <- reactive({
   if (is.null(input$qdx_xlsx)) {
     tibble(Well = integer(), `Delta Rn` = numeric(), `Cycle` = integer())
   } else {
-    read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = 40,
+    read_excel(input$qdx_xlsx$datapath, sheet = "Amplification Data", skip = SKIPROWS,
                col_types = c("numeric", "text", "text", "skip", "numeric"))
   }
 })
