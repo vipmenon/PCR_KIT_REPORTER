@@ -64,9 +64,9 @@ Column {.sidebar data-width=1000}
 ```{r}
 
 rv <- reactiveValues(specimenMatrix = matrix(),
-                     speTbl = limsdbReadTable('Specimen')),
-                     runTbl = limsdbReadTable('Run')),
-                     nCoVTbl = limsdbReadTable('nCoV')),
+                     speTbl = limsdbReadTable('Specimen'),
+                     runTbl = limsdbReadTable('Run'),
+                     nCoVTbl = limsdbReadTable('nCoV'),
                      reportStatus = "",
                      dir = paste0("report/", format(Sys.time(), "%Y%m%d%H%M")))
 

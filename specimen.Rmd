@@ -98,6 +98,8 @@ query_id <- "specimenNumber"
 
 update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "contactNumber", "originalNumber", "doctor", "collectDate", "receiveDate")
 
+# clear_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "institution", "contactNumber", "collectDate", "receiveDate")
+
 tags$span(" ")
 
 actionButton("delete", "删除")
@@ -183,6 +185,8 @@ observeEvent(input[[query_id]],{
                       value = label_query(specNum = input[[query_id]], returnKey = "source"))
         updateTextInput(session, "contactNumber",
                       value = label_query(specNum = input[[query_id]], returnKey = "contactNumber"))
+        updateTextInput(session, "doctor",
+                      value = label_query(specNum = input[[query_id]], returnKey = "doctor"))
       }
     }
   } else {

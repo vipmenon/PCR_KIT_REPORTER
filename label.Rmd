@@ -71,6 +71,8 @@ numericInput("serialLength", label = "序列长度", value = 1)
 
 textInput("source", label = "来源机构")
 
+textInput("doctor", label = "送检医师")
+
 textInput("contactNumber", label = "联系电话")
 
 dateInput("printDate", label = "打印日期", value = Sys.Date())
@@ -79,11 +81,15 @@ actionButton("submit", label = "新增/更新")
 
 query_id <- "startNumber"
 
-update_ary <- c("serialLength", "source", "contactNumber", "printDate")
+update_ary <- c("serialLength", "source", "doctor", "contactNumber", "printDate")
 
 tags$span(" ")
 
 actionButton("delete", "删除")
+
+tags$span(" ")
+
+actionButton("clear", "清空")
 
 ## focus input element
 jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
@@ -234,10 +240,10 @@ observeEvent(input$delete, {
 
 observeEvent(input$clear, {
 
-  updateTextInput(session, "specimenNumber", value = "")
+  updateTextInput(session, "startNumber", value = "")
 
   ## 清空完focus在样本编号输入框
-  js$refocus("specimenNumber")
+  js$refocus("startNumber")
   
 })
 ```
