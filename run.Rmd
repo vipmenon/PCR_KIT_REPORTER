@@ -8,7 +8,7 @@ output:
         - { title: "主页", href: "/BEAGLE_LIMS", align: left }
         - { title: "标本管理", href: "specimen.Rmd", align: left }
         - { title: "检测管理", href: "test.Rmd", align: left }
-        - { title: "人员实验", href: "user.Rmd", align: left }
+        - { title: "人员管理", href: "user.Rmd", align: left }
         - { title: "权限管理", href: "permission.Rmd", align: left }
         - { title: "标签管理", href: "label.Rmd", align: left }
         - { title: "仪器管理", href: "instrument.Rmd", align: left }

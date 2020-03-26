@@ -1,0 +1,242 @@
+---
+title: "贝格尔医学检验实验室"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    navbar:
+        - { title: "主页", href: "/BEAGLE_LIMS", align: left }
+        - { title: "实验上机", href: "run.Rmd", align: left }
+        - { title: "检测管理", href: "test.Rmd", align: left }
+        - { title: "人员实验", href: "user.Rmd", align: left }
+        - { title: "权限管理", href: "permission.Rmd", align: left }
+        - { title: "仪器管理", href: "instrument.Rmd", align: left }
+        - { title: "标本管理", href: "specimen.Rmd", align: left }
+        - { title: "nCoV报告", href: "nCoV2.Rmd", align: left }
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(DT)
+library(DBI)
+library(dplyr)
+library(tibble)
+library(openxlsx)
+library(shinyjs)
+library(RMySQL)
+source("share.R")
+
+```
+
+PCR实验室消毒记录
+=====================================  
+
+Column {.sidebar data-width=250}
+-----------------------------------------------------------------------
+
+```{r}
+TABLE = "PCR_xiaodu"
+
+rv <- reactiveValues(table = limsdbReadTable(TABLE))
+
+## 主窗口表格内容
+mainTbl_sql101 <- "SELECT id `记录号`, DATE_FORMAT(date, '%m-%d') `日期`, time `消毒时间`, chlorine `有效氯含量`,
+                       u.name `操作人`, DATE_FORMAT(p.updatetime, '%m-%d %H:%i') `更新日期`
+                 FROM `PCR_xiaodu` p
+                 LEFT JOIN `User` u on u.userKey = p.operator
+                 WHERE `room` = '101'
+                 "
+mainTbl_sql102 <- "SELECT id `记录号`, DATE_FORMAT(date, '%m-%d') `日期`, time `消毒时间`, chlorine `有效氯含量`,
+                       u.name `操作人`, DATE_FORMAT(p.updatetime, '%m-%d %H:%i') `更新日期`
+                 FROM `PCR_xiaodu` p
+                 LEFT JOIN `User` u on u.userKey = p.operator
+                 WHERE `room` = '102'
+                 "
+mainTbl_sql103 <- "SELECT id `记录号`, DATE_FORMAT(date, '%m-%d') `日期`, time `消毒时间`, chlorine `有效氯含量`,
+                       u.name `操作人`, DATE_FORMAT(p.updatetime, '%m-%d %H:%i') `更新日期`
+                 FROM `PCR_xiaodu` p
+                 LEFT JOIN `User` u on u.userKey = p.operator
+                 WHERE `room` = '103'
+                 "
+rv$mainTbl101 <- limsdbGetQuery(mainTbl_sql101)
+rv$mainTbl102 <- limsdbGetQuery(mainTbl_sql102)
+rv$mainTbl103 <- limsdbGetQuery(mainTbl_sql103)
+
+```
+
+***
+
+```{r}
+useShinyjs(rmd=TRUE)
+
+numericInput("id", label = "记录号（新增记录时此处留空）", value = NA, min = 1)
+
+dateInput("date", label = "日期", value = Sys.Date())
+
+textInput("time", "消毒时间", value = format(Sys.time(), "%R"))
+
+textInput("room", label = "房间号", value = "102")
+
+textInput("chlorine", label = "有效氯含量", value = "1000 mg/mL")
+
+selectInput("operator", label = "操作人", choices = get_user_list(), selected = 366169)
+
+selectInput("supervisor", label = "监督人", choices = get_user_list(), selected = 699361)
+
+actionButton("submit", label = "新增/更新")
+
+query_id <- "id"
+
+update_ary <- c("date", "time", "room", "chlorine", "operator", "supervisor")
+
+tags$span(" ")
+
+actionButton("delete", "删除")
+
+tags$hr()
+
+textInput("report_room", label = "报告房间", value = "102")
+
+textInput("report_month", label = "报告月份（格式：yyyy-mm）", value = format(Sys.Date(), "%Y-%m"))
+
+# 直接用downloadButton不工作，此处代码参考https://stackoverflow.com/questions/55345498/downloadbutton-width-in-r-flexdashboard/55374600#55374600
+
+uiOutput("downloadUI")
+
+output$downloadUI <- renderUI( {
+  downloadButton('report', '下载报告')
+})
+
+output$report <- downloadHandler(filename = function() {
+    paste0('PCR实验室消毒记录表_', input$report_room, "_",format(Sys.Date(), "%Y-%m"), '.xlsx')
+  },
+  content = function(file) {
+      ## fill in report template
+      template_file <- "pcr_xiaodu/xiaodu1.xlsx"
+      wb <- loadWorkbook(template_file)
+      
+      writeData(wb, sheet = 1, x = format(Sys.Date(), "%Y年%m月"), startCol = 1, startRow = 2)
+      writeData(wb, sheet = 1, x = input$report_room, startCol = 3, startRow = 2)
+  
+      sql <- paste0("select DATE_FORMAT(date, '%d') date, time, chlorine, u.name operator, r.name supervisor
+                    from PCR_xiaodu p
+                    left join User u on u.userKey = p.operator
+                    left join User r on r.userKey = p.supervisor
+                    where DATE_FORMAT(date, '%Y-%m') = '", input$report_month, "'
+                    and room = '", input$report_room, "'")
+      records <- limsdbGetQuery(sql) %>% mutate(date = as.integer(date))
+      
+      if (nrow(records) > 0) {
+        for (i in 1:nrow(records)) {
+          row_num <- 3+records$date[i]
+          writeData(wb, sheet = 1, x = records$time[i], startCol = 2, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$chlorine[i], startCol = 3, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$operator[i], startCol = 4, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$supervisor[i], startCol = 5, startRow = row_num)
+        }
+      }
+      saveWorkbook(wb, file = file, overwrite = TRUE)
+    }
+)
+
+## focus input element
+jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
+extendShinyjs(text = jscode)
+
+output$mainTbl101 <- renderDT(rv$mainTbl101, options = list(dom = 't'), rownames= FALSE)
+output$mainTbl102 <- renderDT(rv$mainTbl102, options = list(dom = 't'), rownames= FALSE)
+output$mainTbl103 <- renderDT(rv$mainTbl103, options = list(dom = 't'), rownames= FALSE)
+
+observeEvent(input[[query_id]],{
+
+    for (field in update_ary) {
+      updateTextInput(session, field, value = rv$table %>%
+                      filter(get(query_id) == input[[query_id]]) %>%
+                      pull(field))
+    }
+
+})
+
+check_id <- function(date, room) {
+  query_sql <- paste0("select * from PCR_xiaodu where date = '", date, "' and room = '", room, "'")
+  r <- limsdbGetQuery(query_sql)
+  if (nrow(r) == 1) return(r$id)
+  else return(0)
+}
+
+# 新增与更新
+
+observeEvent(input$submit, {
+  print("OK")
+  ## Single-bracket indexing of reactivevalues object is not allowed.
+  ## So isolate it first
+  inputs <- isolate(reactiveValuesToList(input))
+
+  # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
+  inputs$date <- ifelse(toString(inputs$date) == "", "NULL", toString(inputs$date))
+
+  ## missing id
+  if ( is.na(inputs[query_id]) ) {
+    inputs[query_id] <- check_id(inputs$date, inputs$room)
+  }
+  submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
+
+  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE ",
+                      paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
+
+  insert_sql <- gsub("'NULL'", "NULL", insert_sql)
+  rv$sql_exe <- limsdbExecute(insert_sql)
+
+  ## 刷新主表格内容
+  rv$mainTbl101 <- limsdbGetQuery(mainTbl_sql101)
+  rv$mainTbl102 <- limsdbGetQuery(mainTbl_sql102)
+  rv$mainTbl103 <- limsdbGetQuery(mainTbl_sql103)
+  rv$table <- limsdbReadTable(TABLE)
+})
+
+# 删除记录
+
+observeEvent(input$delete, {
+  print(input[[query_id]])
+  if (!is.na(input[[query_id]])) {
+    delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
+    rv$sql_exe <- limsdbExecute(delete_sql)
+  
+    ## 刷新主表格内容
+    rv$mainTbl101 <- limsdbGetQuery(mainTbl_sql101)
+    rv$mainTbl102 <- limsdbGetQuery(mainTbl_sql102)
+    rv$mainTbl103 <- limsdbGetQuery(mainTbl_sql103)
+    rv$table <- limsdbReadTable(TABLE)
+  }
+})
+```
+
+
+Column {data-width=250}
+-----------------------------------------------------------------------
+
+### 记录表101
+
+```{r}
+DT::dataTableOutput("mainTbl101")
+```
+
+Column {data-width=250}
+-----------------------------------------------------------------------
+
+### 记录表102
+
+```{r}
+DT::dataTableOutput("mainTbl102")
+```
+
+Column {data-width=250}
+-----------------------------------------------------------------------
+
+### 记录表103
+
+```{r}
+DT::dataTableOutput("mainTbl103")
+```
+
