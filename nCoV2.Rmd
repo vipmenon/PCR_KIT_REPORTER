@@ -68,7 +68,7 @@ rv <- reactiveValues(specimenMatrix = matrix(),
                      runTbl = limsdbReadTable('Run'),
                      nCoVTbl = limsdbReadTable('nCoV'),
                      reportStatus = "",
-                     dir = paste0("report/", format(Sys.time(), "%Y%m%d%H%M")))
+                     dir = paste0("report/temporary/", format(Sys.time(), "%Y%m%d%H%M")))
 
 tags$link(rel = 'stylesheet', type = 'text/css', href = 'www/style.css')
 
@@ -424,7 +424,10 @@ observeEvent(input$submit, {
                   incProgress(1/length(samples), specimenNumber)
                 }
                })
+  file.remove(paste0("report/temporary/", dir("report/temporary", pattern = "*.zip")))
   zip(paste0(rv$dir, ".zip"), rv$dir)
+  file.remove(paste(rv$dir, dir(rv$dir), sep = "/"))
+  file.remove(rv$dir)
   rv$reportStatus <- paste(rv$reportStatus, "完毕")
 })
 

@@ -6,6 +6,8 @@ library(tibble)
 UPDATEID = 3
 INSERTID = 2
 DELETEID = 4
+UPLOADID = 5
+DOWNLOADID = 6
 
 dbargs <- list(
   drv = RMySQL::MySQL(),

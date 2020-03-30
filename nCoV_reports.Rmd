@@ -38,18 +38,17 @@ Column {.sidebar data-width=350}
 最后更新日期：`r file.mtime("specimen.Rmd")`
 
 ```{r}
-TABLE = "Specimen"
+TABLE = "nCoV_report"
 
 rv <- reactiveValues(permission = list(view = FALSE, insert = FALSE, delete = FALSE),
+                     dir = "report/nCoV/",
+                     report_files = dir("report/nCoV/", pattern = "*.pdf"),
                      table = limsdbReadTable(TABLE))
+
 ## 主窗口表格内容
-mainTbl_sql <- "SELECT specimenNumber `标本编号`, name `姓名`, gender `性别`, age `年龄`,
-                       specimenType `标本类型`,
-                       contactNumber `联系方式`, institution `送检单位`,
-                       collectDate `采集日期`,
-                       updatetime `更新日期`
-                 FROM `Specimen`
-                 ORDER BY `更新日期` DESC"
+mainTbl_sql <- "SELECT *
+                 FROM `nCoV_report`
+                 ORDER BY `接样日期` DESC"
 rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
 
 inferDate <- as.Date(as.POSIXct(as.numeric(Sys.time()) - 3600*4, origin="1970-01-01"))
@@ -63,17 +62,41 @@ textOutput("p")
 ```{r}
 useShinyjs(rmd=TRUE)
 
-textInput("specimenNumber", label = "标本编号")
+textInput("specimenNumber", label = "样本编号")
 
-fileInput("report_files", label = "上传报告文件（文件名为样本编号，扩展名任意）",
+textInput("message", label = "报告状态（未上传/已上传）", value = "请输入样本编号")
+
+fileInput("report_files", label = "上传报告文件（文件名为报告编号）",
           buttonLabel = "打开", multiple = TRUE,
-          placeholder = ".docx/.pdf file", accept = c(".xlsx", ".pdf"))
-
-update_ary <- c("specimenNumber", "report_files")
+          placeholder = ".pdf file", accept = c(".pdf"))
 
 actionButton("submit", label = "上传检测报告")
 
+tags$hr()
+
+# 直接用downloadButton不工作，此处代码参考https://stackoverflow.com/questions/55345498/downloadbutton-width-in-r-flexdashboard/55374600#55374600
+
+uiOutput("downloadUI")
+
+output$downloadUI <- renderUI( {
+  downloadButton('report', '下载检测报告')
+})
+
+output$report <- downloadHandler(filename = function() {
+    paste0(input$specimenNumber, '.pdf')
+  },
+  content = function(file) {
+              if (input$message == "已上传") {
+                print("OK")
+                file.copy(paste0(rv$dir, dir(rv$dir, pattern = input$specimenNumber)), file)
+              }
+
+            }
+)
+
 query_id <- "specimenNumber"
+
+update_ary <- c("specimenNumber", "report_files", "message", "downloadUI")
 
 tags$span(" ")
 
@@ -114,9 +137,10 @@ observeEvent(input$userKey, {
                                    list(pageLength = 15, scrollX = TRUE), rownames= FALSE)
       output$logText <- renderPrint(rv$log_text)
       output$chartA <- renderPlotly(plot_ly(rv$mainTbl %>%
-                                              group_by(`标本类型`) %>%
-                                              summarise(Num = length(`标本类型`)),
-                                            x = ~`标本类型`, y = ~`Num`, type = "bar"))
+                                              group_by(`送检单位`) %>%
+                                              summarise(Num = length(`送检单位`)),
+                                            x = ~`送检单位`, y = ~`Num`, type = "bar"))
+      disable("message")
   } else {
     output$mainTbl <- renderDT(tibble())
     output$logText <- renderPrint("")
@@ -145,6 +169,15 @@ observeEvent(input$userKey, {
 
 observeEvent(input[[query_id]],{
   # notify if report exist or not
+  if (nchar(input[[query_id]]) == 8) {
+    ullist <- reactive(gsub(pattern = "P04|\\d\\.pdf", ignore.case = TRUE, x = rv$report_files, replacement = ""))
+  
+    if (input$specimenNumber %in% ullist()) {
+      updateTextInput(session, "message", value = "已上传")
+    } else {
+      updateTextInput(session, "message", value = "未上传")
+    }
+  }
 })
 
 # 日志记录查询
@@ -154,68 +187,35 @@ rv$log_text <- get_log(TABLE)
 # 新增与更新
 
 observeEvent(input$submit, {
-  ## Single-bracket indexing of reactivevalues object is not allowed.
-  ## So isolate it first
-  inputs <- isolate(reactiveValuesToList(input))
-  validate(
-    for (ele in update_ary) {
-      need(input[[eval(ele)]], '请输入信息')
+
+  ul <- data.frame(name = input$report_files$name,
+                   datapath = input$report_files$datapath,
+                   type = input$report_files$type)
+  print(ul)
+  if (nrow(ul) > 0) {
+    for (i in 1:nrow(ul)) {
+      if (ul$type[i] == "application/pdf") {
+        file.copy(from = as.character(ul$datapath[i]),
+                  to = paste0(rv$dir, ul$name[i]),
+                  overwrite = TRUE)
+      
+        # 添加日志
+        print(ul$name[i])
+        log_values <- paste(input$userKey, get_table_id(TABLE), UPLOADID,
+                        paste("'", ul$name[i] ,"'", sep = ""),
+                        sep = ", ")
+        log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", ul$name[i], "\" , now())", sep = "")
+
+        limsdbExecute(log_ins_sql)
+      }
     }
-  )
-  # serialNumber <- ifelse(input$serialNumber == "", "NULL", input$serialNumber)
-  inputs$collectDate <- ifelse(toString(input$collectDate) == "", "NULL", toString(input$collectDate))
-  inputs$receiveDate <- ifelse(toString(input$receiveDate) == "", "NULL", toString(input$receiveDate))
-  
-  submitValues <- paste(paste("'", inputs[c(query_id, update_ary)], "'", sep = "", collapse = ", " ), "now()", sep = ", ")
-  
-  insert_sql <- paste("INSERT INTO `", TABLE, "` VALUES (", submitValues, ") ON DUPLICATE KEY UPDATE ",
-                      paste("`", update_ary, "` = '", inputs[update_ary], "'", sep = "", collapse = ", "), sep = "")
-
-  insert_sql <- gsub("'NULL'", "NULL", insert_sql)
-  rv$sql_exe <- limsdbExecute(insert_sql)
-  
-  # 添加日志
-  
-  if (input[[query_id]] %in% rv$table[[query_id]]) {
-    log_values <- paste(input$userKey, get_table_id(TABLE), UPDATEID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
-                  sep = ", ")
-  } else {
-    log_values <- paste(input$userKey, get_table_id(TABLE), INSERTID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
-                  sep = ", ")
+    ## 刷新主表格内容
+    rv$log_text <- get_log(TABLE)
+    rv$report_files = dir("report/nCoV/", pattern = "*.pdf")
   }
-  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", \"", submitValues, "\" , now())", sep = "")
-
-  limsdbExecute(log_ins_sql)
-
-  ## 刷新主表格内容
-  rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
-  rv$table <- limsdbReadTable(TABLE)
-})
-
-# 删除记录
-
-observeEvent(input$delete, {
-  delete_sql <- paste("DELETE FROM `", TABLE, "` WHERE `", query_id, "` = '", input[[query_id]], "'", sep = "")
-  rv$sql_exe <- limsdbExecute(delete_sql)
-
-  # 添加日志
-
-  log_values <- paste(input$userKey, get_table_id(TABLE), DELETEID,
-                  paste("'", input[[query_id]] ,"'", sep = ""),
-                  sep = ", ")
-
-  log_ins_sql <- paste("INSERT INTO `Log`(`userKey`, `tableId`, `operationId`, `recordId`, `values`, `timestamp`) VALUES (", log_values, ", '', now())", sep = "")
-
-  limsdbExecute(log_ins_sql)
   
-  ## 刷新主表格内容
-  rv$log_text <- get_log(TABLE)
-  rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
-  rv$table <- limsdbReadTable(TABLE)
 })
+
 
 ```
 
@@ -235,7 +235,6 @@ Column {data-width=200}
 ### 操作日志
 
 ```{r}
-# renderPrint(input$report_files$name)
 verbatimTextOutput("logText")
 ```
 
