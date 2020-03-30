@@ -65,46 +65,19 @@ useShinyjs(rmd=TRUE)
 
 textInput("specimenNumber", label = "标本编号")
 
-textInput("name", label = "姓名")
+fileInput("report_files", label = "上传报告文件（文件名为样本编号，扩展名任意）",
+          buttonLabel = "打开", multiple = TRUE,
+          placeholder = ".docx/.pdf file", accept = c(".xlsx", ".pdf"))
 
-selectInput("gender", label = "性别", choices = c("女", "男", "-"))
+update_ary <- c("specimenNumber", "report_files")
 
-textInput("age", label = "年龄")
-
-selectInput("specimenType", label = "标本类型", choices = c("咽拭子", "鼻咽拭子", "手术组织", "穿刺组织", "全血",
-                                    "血浆", "血清", "尿液", "粪便", "分泌物", "呕吐物",
-                                    "唾液", "脑脊液", "淋巴液", "房水","其他"))
-
-selectInput("specimenStatus", label = "标本状态", choices = c("符合要求", "溶血", "污染", "损坏",
-                                                        "时间过久", "量较少"))
-
-textInput("medicalNumber", label = "病案号")
-
-textInput("institution", label = "送检单位")
-
-textInput("contactNumber", label = "联系电话")
-
-textInput("originalNumber", label = "原始编号")
-
-textInput("doctor", label = "送检医师")
-
-dateInput("collectDate", label = "采集日期（注意是否隔日）", value = inferDate)
-
-dateInput("receiveDate", label = "接受日期（注意是否隔日）", value = inferDate)
-
-actionButton("submit", label = "新增/更新")
+actionButton("submit", label = "上传检测报告")
 
 query_id <- "specimenNumber"
-
-update_ary <- c("name", "gender", "age", "specimenType", "specimenStatus", "medicalNumber", "institution", "contactNumber", "originalNumber", "doctor", "collectDate", "receiveDate")
 
 tags$span(" ")
 
 actionButton("delete", "删除")
-
-tags$span(" ")
-
-actionButton("clear", "清空")
 
 ## focus input element
 jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
@@ -171,26 +144,7 @@ observeEvent(input$userKey, {
 })
 
 observeEvent(input[[query_id]],{
-  
-  if (rv$permission[["view"]]) {
-    for (field in update_ary) {
-      updateTextInput(session, field, value = rv$table %>%
-                      filter(get(query_id) == input[[query_id]]) %>%
-                      pull(field))
-      if (rv$table %>% filter(get(query_id) == input[[query_id]]) %>% nrow == 0) {
-        # try use label module to inspect institution and contact number once no records in specimen table
-        updateTextInput(session, "institution",
-                      value = label_query(specNum = input[[query_id]], returnKey = "source"))
-        updateTextInput(session, "contactNumber",
-                      value = label_query(specNum = input[[query_id]], returnKey = "contactNumber"))
-        updateTextInput(session, "doctor",
-                      value = label_query(specNum = input[[query_id]], returnKey = "doctor"))
-      }
-    }
-  } else {
-    renderText("用户权限不足")
-  }
-
+  # notify if report exist or not
 })
 
 # 日志记录查询
@@ -263,14 +217,6 @@ observeEvent(input$delete, {
   rv$table <- limsdbReadTable(TABLE)
 })
 
-observeEvent(input$clear, {
-
-  updateTextInput(session, "specimenNumber", value = as.integer(input$specimenNumber) + 1)
-
-  ## 清空完focus在样本编号输入框
-  js$refocus("specimenNumber")
-  
-})
 ```
 
 
@@ -289,6 +235,7 @@ Column {data-width=200}
 ### 操作日志
 
 ```{r}
+# renderPrint(input$report_files$name)
 verbatimTextOutput("logText")
 ```
 

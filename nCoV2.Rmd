@@ -52,7 +52,7 @@ report_template_neg <- list(Liferiver_p = "report/nCoV_template8.docx",
 
 ```
 
-之江生物Z-RR-0479结果分析（测试）
+nCoV结果分析
 =====================================  
 
 Column {.sidebar data-width=1000}

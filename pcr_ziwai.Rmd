@@ -29,39 +29,28 @@ source("share.R")
 
 ```
 
-PCR实验室消毒记录
+PCR实验室悬挂紫外灯使用记录
 =====================================  
 
-Column {.sidebar data-width=250}
+Column {.sidebar data-width=350}
 -----------------------------------------------------------------------
 
 ```{r}
-TABLE = "PCR_xiaodu"
+TABLE = "PCR_ziwai"
 
 rv <- reactiveValues(table = limsdbReadTable(TABLE))
 
 ## 主窗口表格内容
-mainTbl_sql101 <- "SELECT id `记录号`, DATE_FORMAT(date, '%m-%d') `日期`, time `消毒时间`, chlorine `有效氯含量`,
+mainTbl_sql <- "SELECT id `记录号`, room `房间`, date `日期`, time `消毒时间`, length `消毒时长(h)`,
+                       total `累计时间`, status `仪器状态`,
                        u.name `操作人`, DATE_FORMAT(p.updatetime, '%m-%d %H:%i') `更新日期`
-                 FROM `PCR_xiaodu` p
+                 FROM `PCR_ziwai` p
                  LEFT JOIN `User` u on u.userKey = p.operator
-                 WHERE `room` = '101'
-                 "
-mainTbl_sql102 <- "SELECT id `记录号`, DATE_FORMAT(date, '%m-%d') `日期`, time `消毒时间`, chlorine `有效氯含量`,
-                       u.name `操作人`, DATE_FORMAT(p.updatetime, '%m-%d %H:%i') `更新日期`
-                 FROM `PCR_xiaodu` p
-                 LEFT JOIN `User` u on u.userKey = p.operator
-                 WHERE `room` = '102'
-                 "
-mainTbl_sql105 <- "SELECT id `记录号`, DATE_FORMAT(date, '%m-%d') `日期`, time `消毒时间`, chlorine `有效氯含量`,
-                       u.name `操作人`, DATE_FORMAT(p.updatetime, '%m-%d %H:%i') `更新日期`
-                 FROM `PCR_xiaodu` p
-                 LEFT JOIN `User` u on u.userKey = p.operator
-                 WHERE `room` = '105'
-                 "
-rv$mainTbl101 <- limsdbGetQuery(mainTbl_sql101)
-rv$mainTbl102 <- limsdbGetQuery(mainTbl_sql102)
-rv$mainTbl105 <- limsdbGetQuery(mainTbl_sql105)
+                 ORDER BY p.updatetime DESC"
+
+rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
+
+infer_total <- isolate(rv$table %>% pull(total) %>% max())
 
 ```
 
@@ -72,27 +61,33 @@ useShinyjs(rmd=TRUE)
 
 numericInput("id", label = "记录号（新增记录时此处留空）", value = NA, min = 1)
 
+selectInput("room", label = "房间号", choices = 101:108, selected = 102)
+
 dateInput("date", label = "日期", value = Sys.Date())
 
-textInput("time", "消毒时间", value = format(Sys.time(), "%R"))
+textInput("time", "开机时间", value = format(Sys.time(), "%R"))
 
-textInput("room", label = "房间号", value = "102")
+numericInput("length", label = "消毒时长(h)", value = 1)
 
-textInput("chlorine", label = "有效氯含量", value = "1000 mg/mL")
+numericInput("total", label = "累计时长(h)", value = infer_total)
+
+selectInput("status", "仪器状态", choices = c("正常", "异常"), selected = "正常")
 
 selectInput("operator", label = "操作人", choices = get_user_list(), selected = 366169)
-
-selectInput("supervisor", label = "监督人", choices = get_user_list(), selected = 699361)
 
 actionButton("submit", label = "新增/更新")
 
 query_id <- "id"
 
-update_ary <- c("date", "time", "room", "chlorine", "operator", "supervisor")
+update_ary <- c("room", "date", "time", "length", "total", "status", "operator")
 
 tags$span(" ")
 
 actionButton("delete", "删除")
+
+tags$span(" ")
+
+actionButton("clear", "清空")
 
 tags$hr()
 
@@ -109,20 +104,19 @@ output$downloadUI <- renderUI( {
 })
 
 output$report <- downloadHandler(filename = function() {
-    paste0('PCR实验室消毒记录表_', input$report_room, "_",format(Sys.Date(), "%Y-%m"), '.xlsx')
+    paste0('PCR实验室悬挂紫外灯使用记录表_', input$report_room, "_",format(Sys.Date(), "%Y-%m"), '.xlsx')
   },
   content = function(file) {
       ## fill in report template
-      template_file <- "pcr_xiaodu/xiaodu1.xlsx"
+      template_file <- "pcr_ziwai/ziwai1.xlsx"
       wb <- loadWorkbook(template_file)
       
       writeData(wb, sheet = 1, x = format(Sys.Date(), "%Y年%m月"), startCol = 1, startRow = 2)
-      writeData(wb, sheet = 1, x = input$report_room, startCol = 3, startRow = 2)
+      writeData(wb, sheet = 1, x = input$report_room, startCol = 4, startRow = 2)
   
-      sql <- paste0("select DATE_FORMAT(date, '%d') date, time, chlorine, u.name operator, r.name supervisor
-                    from PCR_xiaodu p
+      sql <- paste0("select DATE_FORMAT(date, '%d') date, time, length, total, status, u.name operator
+                    from PCR_ziwai p
                     left join User u on u.userKey = p.operator
-                    left join User r on r.userKey = p.supervisor
                     where DATE_FORMAT(date, '%Y-%m') = '", input$report_month, "'
                     and room = '", input$report_room, "'")
       records <- limsdbGetQuery(sql) %>% mutate(date = as.integer(date))
@@ -131,9 +125,10 @@ output$report <- downloadHandler(filename = function() {
         for (i in 1:nrow(records)) {
           row_num <- 3+records$date[i]
           writeData(wb, sheet = 1, x = records$time[i], startCol = 2, startRow = row_num)
-          writeData(wb, sheet = 1, x = records$chlorine[i], startCol = 3, startRow = row_num)
-          writeData(wb, sheet = 1, x = records$operator[i], startCol = 4, startRow = row_num)
-          writeData(wb, sheet = 1, x = records$supervisor[i], startCol = 5, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$length[i], startCol = 3, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$total[i], startCol = 4, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$status[i], startCol = 5, startRow = row_num)
+          writeData(wb, sheet = 1, x = records$operator[i], startCol = 6, startRow = row_num)
         }
       }
       saveWorkbook(wb, file = file, overwrite = TRUE)
@@ -144,22 +139,21 @@ output$report <- downloadHandler(filename = function() {
 jscode <- 'shinyjs.refocus = function(e_id) {document.getElementById(e_id).focus();}'
 extendShinyjs(text = jscode)
 
-output$mainTbl101 <- renderDT(rv$mainTbl101, rownames= FALSE)
-output$mainTbl102 <- renderDT(rv$mainTbl102, rownames= FALSE)
-output$mainTbl105 <- renderDT(rv$mainTbl105, rownames= FALSE)
+output$mainTbl <- renderDT(rv$mainTbl, rownames= FALSE)
 
 observeEvent(input[[query_id]],{
-
+  if (!is.na(input[[query_id]])) {
     for (field in update_ary) {
       updateTextInput(session, field, value = rv$table %>%
                       filter(get(query_id) == input[[query_id]]) %>%
                       pull(field))
     }
+  }
 
 })
 
 check_id <- function(date, room) {
-  query_sql <- paste0("select * from PCR_xiaodu where date = '", date, "' and room = '", room, "'")
+  query_sql <- paste0("select * from PCR_ziwai where date = '", date, "' and room = '", room, "'")
   r <- limsdbGetQuery(query_sql)
   if (nrow(r) == 1) return(r$id)
   else return(0)
@@ -189,10 +183,15 @@ observeEvent(input$submit, {
   rv$sql_exe <- limsdbExecute(insert_sql)
 
   ## 刷新主表格内容
-  rv$mainTbl101 <- limsdbGetQuery(mainTbl_sql101)
-  rv$mainTbl102 <- limsdbGetQuery(mainTbl_sql102)
-  rv$mainTbl105 <- limsdbGetQuery(mainTbl_sql105)
+  rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
   rv$table <- limsdbReadTable(TABLE)
+  
+  # 如果记录编号为空，则更新自动生成的记录编号，方便接着更新/删除这条记录
+  if (is.na(input[[query_id]])) {
+    updateTextInput(session, query_id, value = rv$table %>%
+                        slice(n()) %>%
+                        pull(query_id))
+  }
 })
 
 # 删除记录
@@ -204,39 +203,35 @@ observeEvent(input$delete, {
     rv$sql_exe <- limsdbExecute(delete_sql)
   
     ## 刷新主表格内容
-    rv$mainTbl101 <- limsdbGetQuery(mainTbl_sql101)
-    rv$mainTbl102 <- limsdbGetQuery(mainTbl_sql102)
-    rv$mainTbl105 <- limsdbGetQuery(mainTbl_sql105)
+    rv$mainTbl <- limsdbGetQuery(mainTbl_sql)
     rv$table <- limsdbReadTable(TABLE)
   }
+})
+
+observeEvent(input$clear, {
+
+  updateTextInput(session, query_id, value = NA)
+
+  ## 清空完focus在样本编号输入框
+  js$refocus(query_id)
+  
 })
 ```
 
 
-Column {data-width=250}
+Column {data-width=450}
 -----------------------------------------------------------------------
 
 ### 记录表101
 
 ```{r}
-DT::dataTableOutput("mainTbl101")
+DT::dataTableOutput("mainTbl")
 ```
 
-Column {data-width=250}
+Column {data-width=200}
 -----------------------------------------------------------------------
 
-### 记录表102
+### 使用说明
 
-```{r}
-DT::dataTableOutput("mainTbl102")
-```
-
-Column {data-width=250}
------------------------------------------------------------------------
-
-### 记录表105
-
-```{r}
-DT::dataTableOutput("mainTbl105")
-```
-
+1. 使用人必须按使用手册进行操作，如发现异常情况及时按程序报告；			
+2. 使用人按照使用表格认真填写。
