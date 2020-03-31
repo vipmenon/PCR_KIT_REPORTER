@@ -29,13 +29,13 @@ source("share.R")
 
 ```
 
-标本管理
+新冠报告汇总
 =====================================  
 
 Column {.sidebar data-width=350}
 -----------------------------------------------------------------------
 
-最后更新日期：`r file.mtime("specimen.Rmd")`
+最后更新日期：`r file.mtime("nCoV_reports.Rmd")`
 
 ```{r}
 TABLE = "nCoV_report"
@@ -223,7 +223,7 @@ observeEvent(input$submit, {
 Column {data-width=450}
 -----------------------------------------------------------------------
 
-### 标本列表（本表内容保密）
+### 新冠报告汇总表
 
 ```{r}
 DT::dataTableOutput("mainTbl")
